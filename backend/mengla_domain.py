@@ -5,7 +5,7 @@ import hashlib
 import json
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import logging
 import os
@@ -23,8 +23,26 @@ from .period_utils import (
     timest_to_period_key,
     to_dashed_date,
 )
+from .config import (
+    CONCURRENT_CONFIG,
+    CACHE_TTL,
+    COLLECTION_NAME,
+    ACTION_MAPPING,
+    get_cache_ttl,
+    get_expired_at,
+    build_redis_data_key,
+)
+from .cache_layer import get_cache_manager, CacheManager
+from .resilience import (
+    retry_async,
+    get_circuit_manager,
+    CircuitBreakerError,
+    is_retryable_exception,
+)
+from .logger import get_collect_logger, CollectLogger
 
 
+# 旧配置保留兼容
 ACTION_CONFIG: Dict[str, Dict[str, str]] = {
     "high": {"collection": "mengla_high_reports", "redis_prefix": "mengla:high"},
     "hot": {"collection": "mengla_hot_reports", "redis_prefix": "mengla:hot"},
@@ -44,6 +62,31 @@ logger = logging.getLogger("mengla-domain")
 
 # 同参采集请求去重表：key 通常为 f"{action}:{params_hash}"
 IN_FLIGHT: Dict[str, asyncio.Future] = {}
+
+# ==============================================================================
+# 并发控制
+# ==============================================================================
+_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def get_semaphore() -> asyncio.Semaphore:
+    """获取全局并发信号量"""
+    global _semaphore
+    if _semaphore is None:
+        max_concurrent = CONCURRENT_CONFIG.get("max_concurrent", 5)
+        _semaphore = asyncio.Semaphore(max_concurrent)
+    return _semaphore
+
+
+async def collect_with_concurrency_control(
+    func,
+    *args,
+    **kwargs,
+) -> Any:
+    """带并发控制的采集执行"""
+    semaphore = get_semaphore()
+    async with semaphore:
+        return await func(*args, **kwargs)
 
 
 def _unwrap_result_data(data: Any) -> Any:
@@ -580,4 +623,197 @@ async def query_mengla_domain(
         # 仅创建该 task 的请求负责清理
         if IN_FLIGHT.get(request_key) is task:
             IN_FLIGHT.pop(request_key, None)
+
+
+# ==============================================================================
+# 并发批量采集
+# ==============================================================================
+async def collect_batch(
+    tasks: List[Dict[str, Any]],
+    max_concurrent: Optional[int] = None,
+) -> List[Tuple[Dict[str, Any], Any, str, Optional[Exception]]]:
+    """
+    并发批量采集
+    
+    Args:
+        tasks: 采集任务列表，每个任务是 query_mengla_domain 的参数字典
+        max_concurrent: 最大并发数，默认从配置读取
+    
+    Returns:
+        结果列表，每个元素为 (task, data, source, error)
+        - task: 原始任务参数
+        - data: 采集结果数据（成功时）
+        - source: 数据来源 ("mongo"/"redis"/"fresh")
+        - error: 异常对象（失败时）
+    """
+    if not tasks:
+        return []
+    
+    _max_concurrent = max_concurrent or CONCURRENT_CONFIG.get("max_concurrent", 5)
+    semaphore = asyncio.Semaphore(_max_concurrent)
+    
+    async def execute_one(task: Dict[str, Any]) -> Tuple[Dict[str, Any], Any, str, Optional[Exception]]:
+        async with semaphore:
+            try:
+                data, source = await query_mengla_domain(**task)
+                return (task, data, source, None)
+            except Exception as e:
+                logger.warning("Batch collect task failed: %s error=%s", task, e)
+                return (task, None, "", e)
+    
+    results = await asyncio.gather(
+        *[execute_one(t) for t in tasks],
+        return_exceptions=False,  # 异常已在 execute_one 中处理
+    )
+    
+    return results
+
+
+async def collect_batch_with_retry(
+    tasks: List[Dict[str, Any]],
+    max_concurrent: Optional[int] = None,
+    max_retries: int = 2,
+) -> Dict[str, Any]:
+    """
+    带重试的并发批量采集
+    
+    Args:
+        tasks: 采集任务列表
+        max_concurrent: 最大并发数
+        max_retries: 失败任务最大重试次数
+    
+    Returns:
+        统计信息字典，包含 success/failed/results
+    """
+    collect_logger = get_collect_logger()
+    
+    results = await collect_batch(tasks, max_concurrent)
+    
+    succeeded = []
+    failed = []
+    
+    for task, data, source, error in results:
+        if error is None:
+            succeeded.append({"task": task, "data": data, "source": source})
+        else:
+            failed.append({"task": task, "error": str(error), "retryable": is_retryable_exception(error)})
+    
+    # 重试失败的任务
+    retry_tasks = [f["task"] for f in failed if f["retryable"]]
+    for retry_round in range(max_retries):
+        if not retry_tasks:
+            break
+        
+        logger.info("Retry round %d: %d tasks", retry_round + 1, len(retry_tasks))
+        retry_results = await collect_batch(retry_tasks, max_concurrent)
+        
+        new_retry_tasks = []
+        for task, data, source, error in retry_results:
+            if error is None:
+                succeeded.append({"task": task, "data": data, "source": source})
+                # 从 failed 中移除
+                failed = [f for f in failed if f["task"] != task]
+            elif is_retryable_exception(error):
+                new_retry_tasks.append(task)
+        
+        retry_tasks = new_retry_tasks
+    
+    return {
+        "total": len(tasks),
+        "success": len(succeeded),
+        "failed": len(failed),
+        "results": succeeded,
+        "errors": failed,
+    }
+
+
+# ==============================================================================
+# 新版采集接口（使用三级缓存）
+# ==============================================================================
+async def query_mengla_v2(
+    *,
+    action: str,
+    cat_id: str = "",
+    granularity: str = "day",
+    period_key: str = "",
+    extra: Optional[Dict[str, Any]] = None,
+    use_cache: bool = True,
+    timeout_seconds: Optional[int] = None,
+) -> Tuple[Any, str]:
+    """
+    新版 MengLa 查询接口（使用三级缓存架构）
+    
+    Args:
+        action: 操作类型 (high/hot/chance/industryViewV2/industryTrendRange)
+        cat_id: 类目ID，空字符串表示全类目
+        granularity: 颗粒度 (day/month/quarter/year)
+        period_key: 时间周期 key
+        extra: 额外参数
+        use_cache: 是否使用缓存
+        timeout_seconds: 超时时间
+    
+    Returns:
+        (data, source) 元组
+    """
+    collect_logger = get_collect_logger()
+    cache_manager = get_cache_manager()
+    circuit_manager = get_circuit_manager()
+    
+    start_time = time.time()
+    trace_id = collect_logger.start(action, cat_id, granularity, period_key)
+    
+    try:
+        # 1. 检查三级缓存
+        if use_cache:
+            cached_data, cache_source = await cache_manager.get(
+                action, cat_id, granularity, period_key
+            )
+            if cached_data is not None:
+                duration_ms = int((time.time() - start_time) * 1000)
+                collect_logger.cache_hit(cache_source, duration_ms)
+                return (cached_data, cache_source)
+        
+        # 2. 通过熔断器调用外部采集
+        circuit = await circuit_manager.get_or_create(f"mengla_{action}")
+        
+        async def fetch_from_service():
+            # 调用原有的 query_mengla_domain（会写入旧集合）
+            data, source = await query_mengla_domain(
+                action=action,
+                product_id="",
+                catId=cat_id,
+                dateType=granularity,
+                timest=period_key,
+                starRange="",
+                endRange="",
+                extra=extra,
+                timeout_seconds=timeout_seconds,
+            )
+            return data, source
+        
+        data, source = await circuit.call(fetch_from_service)
+        
+        # 3. 写入新的三级缓存
+        duration_ms = int((time.time() - start_time) * 1000)
+        await cache_manager.set(
+            action, cat_id, granularity, period_key,
+            data, source="fresh", collect_duration_ms=duration_ms
+        )
+        
+        collect_logger.success(source, duration_ms)
+        return (data, source)
+        
+    except CircuitBreakerError as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        collect_logger.circuit_open(e.circuit_name)
+        collect_logger.failure(e, duration_ms, retryable=False)
+        raise
+        
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        collect_logger.failure(e, duration_ms, retryable=is_retryable_exception(e))
+        raise
+        
+    finally:
+        collect_logger.finish()
 

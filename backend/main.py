@@ -38,6 +38,12 @@ from .category_utils import (
     get_all_valid_cat_ids,
     get_secondary_categories,
 )
+# 新增模块
+from .cache_layer import get_cache_manager, warmup_cache
+from .metrics import get_metrics_collector, get_current_metrics
+from .alerting import get_alert_manager, run_alert_check, init_default_notifiers
+from .resilience import get_circuit_manager
+from .logger import setup_logging
 
 
 def _panel_admin_enabled() -> bool:
@@ -83,6 +89,12 @@ async def _start_scheduler() -> None:
 @app.on_event("startup")
 async def _init_indexes() -> None:
     await ensure_mengla_indexes()
+
+
+@app.on_event("startup")
+async def _init_alerting() -> None:
+    """初始化告警系统"""
+    init_default_notifiers()
 
 
 @app.on_event("shutdown")
@@ -803,4 +815,134 @@ async def mengla_query_mock(body: MengLaQueryBody):
         return get_mock_industry_trend_data()
     else:
         return {"error": f"Unknown action: {action}"}
+
+
+# ==============================================================================
+# 监控与运维 API
+# ==============================================================================
+@app.get("/admin/metrics", dependencies=[Depends(require_panel_admin)])
+async def get_metrics():
+    """获取采集指标统计"""
+    return await get_current_metrics()
+
+
+@app.get("/admin/metrics/latency", dependencies=[Depends(require_panel_admin)])
+async def get_latency_stats():
+    """获取延迟百分位统计"""
+    collector = get_metrics_collector()
+    return await collector.get_latency_percentiles()
+
+
+@app.get("/admin/alerts", dependencies=[Depends(require_panel_admin)])
+async def get_alerts():
+    """获取当前活跃告警"""
+    manager = get_alert_manager()
+    return {
+        "active": await manager.get_active_alerts(),
+        "rules": await manager.get_rule_status(),
+    }
+
+
+@app.get("/admin/alerts/history", dependencies=[Depends(require_panel_admin)])
+async def get_alert_history(limit: int = 100):
+    """获取告警历史"""
+    manager = get_alert_manager()
+    return await manager.get_alert_history(limit)
+
+
+@app.post("/admin/alerts/check", dependencies=[Depends(require_panel_admin)])
+async def check_alerts():
+    """手动触发告警检查"""
+    return await run_alert_check()
+
+
+class SilenceRuleRequest(BaseModel):
+    rule_name: str
+    duration_minutes: int = 60
+
+
+@app.post("/admin/alerts/silence", dependencies=[Depends(require_panel_admin)])
+async def silence_alert_rule(body: SilenceRuleRequest):
+    """静默某个告警规则"""
+    manager = get_alert_manager()
+    success = await manager.silence_rule(body.rule_name, body.duration_minutes)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Rule not found: {body.rule_name}")
+    return {"message": f"Rule {body.rule_name} silenced for {body.duration_minutes} minutes"}
+
+
+@app.get("/admin/cache/stats", dependencies=[Depends(require_panel_admin)])
+async def get_cache_stats():
+    """获取缓存统计"""
+    cache_manager = get_cache_manager()
+    return cache_manager.get_stats()
+
+
+class CacheWarmupRequest(BaseModel):
+    actions: Optional[List[str]] = None
+    cat_ids: Optional[List[str]] = None
+    granularities: Optional[List[str]] = None
+    limit: int = 100
+
+
+@app.post("/admin/cache/warmup", dependencies=[Depends(require_panel_admin)])
+async def trigger_cache_warmup(body: CacheWarmupRequest, tasks: BackgroundTasks):
+    """触发缓存预热"""
+    tasks.add_task(
+        warmup_cache,
+        body.actions,
+        body.cat_ids,
+        body.granularities,
+        body.limit,
+    )
+    return {"message": "Cache warmup started", "limit": body.limit}
+
+
+@app.post("/admin/cache/clear-l1", dependencies=[Depends(require_panel_admin)])
+async def clear_l1_cache():
+    """清空 L1 本地缓存"""
+    cache_manager = get_cache_manager()
+    await cache_manager.clear_l1()
+    return {"message": "L1 cache cleared"}
+
+
+@app.get("/admin/circuit-breakers", dependencies=[Depends(require_panel_admin)])
+async def get_circuit_breakers():
+    """获取熔断器状态"""
+    manager = get_circuit_manager()
+    return manager.get_all_stats()
+
+
+@app.post("/admin/circuit-breakers/reset", dependencies=[Depends(require_panel_admin)])
+async def reset_circuit_breakers():
+    """重置所有熔断器"""
+    manager = get_circuit_manager()
+    await manager.reset_all()
+    return {"message": "All circuit breakers reset"}
+
+
+@app.get("/admin/system/status", dependencies=[Depends(require_panel_admin)])
+async def get_system_status():
+    """获取系统综合状态"""
+    metrics = await get_current_metrics()
+    cache_manager = get_cache_manager()
+    alert_manager = get_alert_manager()
+    circuit_manager = get_circuit_manager()
+    
+    return {
+        "metrics": metrics,
+        "cache": cache_manager.get_stats(),
+        "alerts": {
+            "active_count": len(await alert_manager.get_active_alerts()),
+            "rules": await alert_manager.get_rule_status(),
+        },
+        "circuit_breakers": circuit_manager.get_all_stats(),
+        "scheduler": {
+            "running": scheduler.running,
+            "jobs": [
+                {"id": job.id, "name": job.name, "next_run": str(job.next_run_time)}
+                for job in scheduler.get_jobs()
+            ],
+        },
+    }
 

@@ -1,21 +1,101 @@
-from typing import Optional
-
+from typing import Optional, List
 from pathlib import Path
+import logging
 
 import motor.motor_asyncio
+from pymongo import IndexModel, ASCENDING
 from redis import asyncio as aioredis
 from fastapi import FastAPI
 from dotenv import load_dotenv
 
 
+logger = logging.getLogger("mengla-database")
+
 MONGO_URI_DEFAULT = "mongodb://localhost:27017"
 MONGO_DB_DEFAULT = "industry_monitor"
 REDIS_URI_DEFAULT = "redis://localhost:6379/0"
 
+# 统一集合名称
+MENGLA_DATA_COLLECTION = "mengla_data"
 
 mongo_client: Optional[motor.motor_asyncio.AsyncIOMotorClient] = None
 mongo_db = None
 redis_client: Optional[aioredis.Redis] = None
+
+
+# ==============================================================================
+# MongoDB 索引定义
+# ==============================================================================
+def get_mengla_data_indexes() -> List[IndexModel]:
+    """获取 mengla_data 集合的索引定义"""
+    return [
+        # 主查询索引（唯一）：action + cat_id + granularity + period_key
+        IndexModel(
+            [
+                ("action", ASCENDING),
+                ("cat_id", ASCENDING),
+                ("granularity", ASCENDING),
+                ("period_key", ASCENDING),
+            ],
+            unique=True,
+            name="idx_main_query",
+        ),
+        # 类目维度查询
+        IndexModel(
+            [("cat_id", ASCENDING), ("created_at", ASCENDING)],
+            name="idx_cat_time",
+        ),
+        # 跨类目聚合
+        IndexModel(
+            [
+                ("action", ASCENDING),
+                ("granularity", ASCENDING),
+                ("period_key", ASCENDING),
+            ],
+            name="idx_action_period",
+        ),
+        # TTL 自动清理索引
+        IndexModel(
+            [("expired_at", ASCENDING)],
+            expireAfterSeconds=0,
+            name="idx_ttl_expired",
+        ),
+        # 增量同步
+        IndexModel(
+            [("updated_at", ASCENDING)],
+            name="idx_updated",
+        ),
+    ]
+
+
+async def ensure_indexes() -> None:
+    """确保所有索引已创建"""
+    if mongo_db is None:
+        logger.warning("MongoDB not connected, skipping index creation")
+        return
+    
+    collection = mongo_db[MENGLA_DATA_COLLECTION]
+    indexes = get_mengla_data_indexes()
+    
+    try:
+        # 获取现有索引
+        existing_indexes = set()
+        async for idx in collection.list_indexes():
+            existing_indexes.add(idx.get("name", ""))
+        
+        # 创建缺失的索引
+        for idx in indexes:
+            idx_name = idx.document.get("name", "")
+            if idx_name and idx_name not in existing_indexes:
+                try:
+                    await collection.create_indexes([idx])
+                    logger.info(f"Created index: {idx_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to create index {idx_name}: {e}")
+        
+        logger.info(f"Index check completed for collection: {MENGLA_DATA_COLLECTION}")
+    except Exception as e:
+        logger.error(f"Error ensuring indexes: {e}")
 
 
 def _mask_uri(uri: str) -> str:
@@ -80,9 +160,19 @@ def init_db_events(app: FastAPI) -> None:
 
         await connect_to_mongo(mongo_uri, mongo_db_name)
         await connect_to_redis(redis_uri)
+        
+        # 确保索引已创建
+        await ensure_indexes()
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
         await disconnect_redis()
         await disconnect_mongo()
+
+
+def get_mengla_collection():
+    """获取统一的 mengla_data 集合"""
+    if mongo_db is None:
+        raise RuntimeError("MongoDB not connected")
+    return mongo_db[MENGLA_DATA_COLLECTION]
 
