@@ -67,15 +67,17 @@ class MengLaService:
         api_key = os.getenv("COLLECT_SERVICE_API_KEY", "")
         url = f"{base_url}/api/managed-tasks"
 
+        # 构建请求头，仅在有 API key 时添加 Authorization
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.get(
                     url,
                     params={"page": 1, "limit": 100},
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    headers=headers,
                 )
         except httpx.ConnectError as e:
             logger.warning("采集服务不可达 %s: %s", url, e)
@@ -146,14 +148,16 @@ class MengLaService:
         }
 
         execute_url = f"{base_url}/api/managed-tasks/{collect_type_id}/execute"
+        # 构建请求头，仅在有 API key 时添加 Authorization
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     execute_url,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    headers=headers,
                     content=json.dumps(request_body, ensure_ascii=False),
                 )
         except httpx.ConnectError as e:
