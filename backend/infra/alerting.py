@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-from .config import ALERTING_CONFIG
+from ..utils.config import ALERTING_CONFIG
 from .metrics import get_metrics_collector
 
 

@@ -10,9 +10,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import logging
 import os
 
-from . import database
-from .mengla_client import MengLaQueryParams, get_mengla_service
-from .period_utils import (
+from ..infra import database
+from .client import MengLaQueryParams, get_mengla_service
+from ..utils.period import (
     format_for_collect_api,
     format_trend_range_for_api,
     make_period_keys,
@@ -23,7 +23,7 @@ from .period_utils import (
     timest_to_period_key,
     to_dashed_date,
 )
-from .config import (
+from ..utils.config import (
     CONCURRENT_CONFIG,
     CACHE_TTL,
     COLLECTION_NAME,
@@ -32,14 +32,14 @@ from .config import (
     get_expired_at,
     build_redis_data_key,
 )
-from .cache_layer import get_cache_manager, CacheManager
-from .resilience import (
+from ..infra.cache import get_cache_manager, CacheManager
+from ..infra.resilience import (
     retry_async,
     get_circuit_manager,
     CircuitBreakerError,
     is_retryable_exception,
 )
-from .logger import get_collect_logger, CollectLogger
+from ..infra.logger import get_collect_logger, CollectLogger
 
 
 # 旧配置保留兼容

@@ -16,7 +16,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 
-from .config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG
+from ..utils.config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG
 
 
 logger = logging.getLogger("mengla-resilience")

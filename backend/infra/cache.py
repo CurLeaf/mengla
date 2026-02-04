@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple, List
 
 from cachetools import TTLCache
 
-from .config import (
+from ..utils.config import (
     L1_CACHE_CONFIG,
     CACHE_TTL,
     COLLECTION_NAME,

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Deque
 
-from .config import REDIS_KEY_PREFIX
+from ..utils.config import REDIS_KEY_PREFIX
 from . import database
 
 

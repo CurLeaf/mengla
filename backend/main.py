@@ -24,25 +24,25 @@ logging.basicConfig(
 for _name in ("mengla-backend", "mengla-domain", "backend.mengla_client"):
     logging.getLogger(_name).setLevel(logging.INFO)
 
-from . import database
-from .database import init_db_events
+from .infra import database
+from .infra.database import init_db_events
 from .scheduler import init_scheduler, PANEL_TASKS
-from .backfill import backfill_data
-from .mengla_domain import ACTION_CONFIG, query_mengla_domain
-from .period_utils import period_keys_in_range
-from .dashboard_config import get_panel_config, update_panel_config
-from .mengla_crawl_queue import create_crawl_job
-from .category_utils import (
+from .tools.backfill import backfill_data
+from .core.domain import ACTION_CONFIG, query_mengla_domain
+from .utils.period import period_keys_in_range
+from .utils.dashboard import get_panel_config, update_panel_config
+from .core.queue import create_crawl_job
+from .utils.category import (
     get_all_categories,
     get_all_valid_cat_ids,
     get_secondary_categories,
 )
 # 新增模块
-from .cache_layer import get_cache_manager, warmup_cache
-from .metrics import get_metrics_collector, get_current_metrics
-from .alerting import get_alert_manager, run_alert_check, init_default_notifiers
-from .resilience import get_circuit_manager
-from .logger import setup_logging
+from .infra.cache import get_cache_manager, warmup_cache
+from .infra.metrics import get_metrics_collector, get_current_metrics
+from .infra.alerting import get_alert_manager, run_alert_check, init_default_notifiers
+from .infra.resilience import get_circuit_manager
+from .infra.logger import setup_logging
 
 
 def _panel_admin_enabled() -> bool:

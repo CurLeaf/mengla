@@ -7,9 +7,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .database import mongo_db
-from .mengla_domain import ACTION_CONFIG
-from .period_utils import period_keys_in_range
+from ..infra.database import mongo_db
+from .domain import ACTION_CONFIG
+from ..utils.period import period_keys_in_range
 
 # Collection names
 CRAWL_JOBS = "crawl_jobs"

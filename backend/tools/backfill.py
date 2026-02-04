@@ -28,11 +28,11 @@ from pathlib import Path
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from backend import database
-from backend.category_utils import get_top_level_cat_ids
-from backend.mengla_domain import query_mengla_domain
-from backend.period_utils import period_keys_in_range, period_to_date_range
-from backend.mengla_crawl_queue import (
+from backend.infra import database
+from backend.utils.category import get_top_level_cat_ids
+from backend.core.domain import query_mengla_domain
+from backend.utils.period import period_keys_in_range, period_to_date_range
+from backend.core.queue import (
     CRAWL_JOBS,
     CRAWL_SUBTASKS,
     JOB_CANCELLED,

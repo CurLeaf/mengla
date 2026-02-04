@@ -9,8 +9,8 @@ import asyncio
 
 import httpx
 
-from . import database
-from .period_utils import format_for_collect_api, normalize_granularity, period_to_date_range
+from ..infra import database
+from ..utils.period import format_for_collect_api, normalize_granularity, period_to_date_range
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ class MengLaService:
     ) -> Any:
         # 确保 Redis 已初始化；若未初始化则按环境变量兜底连接一次
         if database.redis_client is None:
-            from .database import REDIS_URI_DEFAULT, connect_to_redis
+            from .infra.database import REDIS_URI_DEFAULT, connect_to_redis
 
             redis_uri = os.getenv("REDIS_URI", REDIS_URI_DEFAULT)
             await connect_to_redis(redis_uri)

@@ -99,7 +99,7 @@ async def check_data(verbose: bool = True) -> dict:
         print("MongoDB 数据检查")
         print("=" * 80)
     
-    from backend import database
+    from backend.infra import database
     
     results = {"collections": {}, "_all_ok": False}
     
@@ -182,7 +182,7 @@ async def check_redis(verbose: bool = True) -> dict:
         print("Redis 连接检查")
         print("=" * 80)
     
-    from backend import database
+    from backend.infra import database
     
     results = {"connected": False, "read_write": False}
     
@@ -233,7 +233,7 @@ async def check_mongo(verbose: bool = True) -> dict:
         print("MongoDB 连接检查")
         print("=" * 80)
     
-    from backend import database
+    from backend.infra import database
     
     results = {"connected": False, "read_write": False}
     

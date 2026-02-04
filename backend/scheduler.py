@@ -6,10 +6,10 @@ from typing import Any, Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .database import mongo_db
-from .period_utils import make_period_keys, period_to_date_range
-from .mengla_domain import query_mengla_domain
-from .mengla_crawl_queue import (
+from .infra.database import mongo_db
+from .utils.period import make_period_keys, period_to_date_range
+from .core.domain import query_mengla_domain
+from .core.queue import (
     get_next_job,
     get_pending_subtasks,
     set_job_running,
@@ -19,8 +19,8 @@ from .mengla_crawl_queue import (
     inc_job_stats,
     finish_job_if_done,
 )
-from .category_utils import get_top_level_cat_ids
-from .config import SCHEDULER_CONFIG, CRON_JOBS, CONCURRENT_CONFIG
+from .utils.category import get_top_level_cat_ids
+from .utils.config import SCHEDULER_CONFIG, CRON_JOBS, CONCURRENT_CONFIG
 
 logger = logging.getLogger("mengla-scheduler")
 
@@ -373,8 +373,8 @@ async def run_backfill_check() -> Dict[str, Any]:
     """
     补数检查：检查最近数据是否有缺失，触发补采
     """
-    from .database import mongo_db, MENGLA_DATA_COLLECTION
-    from .config import COLLECTION_NAME
+    from .infra.database import mongo_db, MENGLA_DATA_COLLECTION
+    from .utils.config import COLLECTION_NAME
     
     if mongo_db is None:
         logger.warning("MongoDB not connected, skipping backfill check")
