@@ -5,8 +5,7 @@
       "name": "Dev Hotmode (Frontend)",
       "type": "pwa-chrome",
       "request": "launch",
-      "url": "http://localhost:5173",
-      "preLaunchTask": "Dev: Start All (hot)"
+      "url": "http://localhost:5173"
     }
   ]
 }

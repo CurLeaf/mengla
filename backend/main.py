@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -13,6 +14,15 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import os
+
+# 确保应用与 MengLa 调试日志在控制台可见（uvicorn 默认不配置根 logger）
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s %(message)s",
+    datefmt="%H:%M:%S",
+)
+for _name in ("mengla-backend", "mengla-domain", "backend.mengla_client"):
+    logging.getLogger(_name).setLevel(logging.INFO)
 
 from . import database
 from .database import init_db_events
@@ -156,6 +166,17 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
     内部：按 action 执行萌拉查询，校验 catId，调用 query_mengla_domain，统一异常处理。
     返回 JSONResponse（含 X-MengLa-Source 头）。
     """
+    t0 = time.time()
+    logger.info(
+        "[MengLa] request action=%s catId=%s dateType=%s timest=%s starRange=%s endRange=%s at=%s",
+        action,
+        body.catId or "",
+        body.dateType or "",
+        body.timest or "",
+        body.starRange or "",
+        body.endRange or "",
+        datetime.utcnow().isoformat() + "Z",
+    )
     cat_id = (body.catId or "").strip()
     if cat_id:
         valid_cat_ids = get_all_valid_cat_ids()
@@ -179,25 +200,54 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
             secondary = get_secondary_categories((body.catId or "").strip())
             if isinstance(data, dict):
                 data = {**data, "secondaryCategories": secondary}
-        logger.info("MengLa 查询返回: action=%s source=%s", action, source)
+        elapsed = time.time() - t0
+        try:
+            size = len(json.dumps(data, ensure_ascii=False))
+        except (TypeError, ValueError):
+            size = -1
+        logger.info(
+            "[MengLa] response action=%s source=%s size=%s elapsed_sec=%.2f",
+            action,
+            source,
+            size,
+            elapsed,
+        )
         return JSONResponse(
             content=data,
             headers={"X-MengLa-Source": source, "Access-Control-Expose-Headers": "X-MengLa-Source"},
         )
-    except TimeoutError:
-        logger.error("MengLa query timeout", exc_info=True)
+    except TimeoutError as exc:
+        logger.error(
+            "MengLa query timeout type=%s message=%s",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
         raise HTTPException(status_code=504, detail="mengla query timeout")
     except httpx.ConnectError as exc:
-        logger.warning("MengLa 采集服务不可达: %s", exc)
+        logger.warning(
+            "MengLa 采集服务不可达 type=%s message=%s",
+            type(exc).__name__,
+            exc,
+        )
         raise HTTPException(
             status_code=503,
             detail="采集服务不可达，请检查 COLLECT_SERVICE_URL 与网络（如 VPN、防火墙）",
         )
     except httpx.TimeoutException as exc:
-        logger.warning("MengLa 采集服务请求超时: %s", exc)
+        logger.warning(
+            "MengLa 采集服务请求超时 type=%s message=%s",
+            type(exc).__name__,
+            exc,
+        )
         raise HTTPException(status_code=504, detail="采集服务请求超时")
     except Exception as exc:  # noqa: BLE001
-        logger.error("MengLa query failed: %s", exc)
+        logger.error(
+            "MengLa query failed type=%s message=%s",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -560,6 +610,17 @@ async def mengla_query(body: MengLaQueryBody):
     - catId 必须为 backend/category.json 中存在的类目 ID
     - 后端统一做频控、调用托管任务、轮询 Redis、缓存结果，并落库 Mongo
     """
+    t0 = time.time()
+    logger.info(
+        "[MengLa] request action=%s catId=%s dateType=%s timest=%s starRange=%s endRange=%s at=%s",
+        body.action,
+        body.catId or "",
+        body.dateType or "",
+        body.timest or "",
+        body.starRange or "",
+        body.endRange or "",
+        datetime.utcnow().isoformat() + "Z",
+    )
     cat_id = (body.catId or "").strip()
     if cat_id:
         valid_cat_ids = get_all_valid_cat_ids()
@@ -583,23 +644,51 @@ async def mengla_query(body: MengLaQueryBody):
             secondary = get_secondary_categories((body.catId or "").strip())
             if isinstance(data, dict):
                 data = {**data, "secondaryCategories": secondary}
-        logger.info("MengLa 查询返回: action=%s source=%s", body.action, source)
+        elapsed = time.time() - t0
+        try:
+            size = len(json.dumps(data, ensure_ascii=False))
+        except (TypeError, ValueError):
+            size = -1
+        logger.info(
+            "[MengLa] response action=%s source=%s size=%s elapsed_sec=%.2f",
+            body.action,
+            source,
+            size,
+            elapsed,
+        )
         return JSONResponse(content=data, headers={"X-MengLa-Source": source, "Access-Control-Expose-Headers": "X-MengLa-Source"})
-    except TimeoutError:
-        logger.error("MengLa query timeout", exc_info=True)
+    except TimeoutError as exc:
+        logger.error(
+            "MengLa query timeout type=%s message=%s",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
         raise HTTPException(status_code=504, detail="mengla query timeout")
     except httpx.ConnectError as exc:
-        logger.warning("MengLa 采集服务不可达: %s", exc)
+        logger.warning(
+            "MengLa 采集服务不可达 type=%s message=%s",
+            type(exc).__name__,
+            exc,
+        )
         raise HTTPException(
             status_code=503,
             detail="采集服务不可达，请检查 COLLECT_SERVICE_URL 与网络（如 VPN、防火墙）",
         )
     except httpx.TimeoutException as exc:
-        logger.warning("MengLa 采集服务请求超时: %s", exc)
+        logger.warning(
+            "MengLa 采集服务请求超时 type=%s message=%s",
+            type(exc).__name__,
+            exc,
+        )
         raise HTTPException(status_code=504, detail="采集服务请求超时")
     except Exception as exc:  # noqa: BLE001
-        # 打印完整堆栈，方便排查 500 错误
-        logger.error("MengLa query failed: %s", exc)
+        logger.error(
+            "MengLa query failed type=%s message=%s",
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(exc))
 

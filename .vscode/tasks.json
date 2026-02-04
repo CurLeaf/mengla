@@ -20,21 +20,12 @@
     {
       "label": "Dev: Frontend (Vite)",
       "type": "shell",
-      "command": "pnpm dev",
+      "command": "pnpm --filter industry-monitor-frontend dev",
       "options": {
-        "cwd": "frontend"
+        "cwd": "."
       },
       "isBackground": true,
       "problemMatcher": []
-    },
-    {
-      "label": "Dev: Start All (hot)",
-      "dependsOn": [
-        "Dev: Docker (Mongo+Redis)",
-        "Dev: Backend (FastAPI)",
-        "Dev: Frontend (Vite)"
-      ],
-      "dependsOrder": "parallel"
     }
   ]
 }

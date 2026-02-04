@@ -205,12 +205,37 @@ class MengLaService:
         import asyncio
 
         deadline = time.time() + timeout_seconds
+        poll_count = 0
+        last_log_sec = 0
         while time.time() < deadline:
             data = await database.redis_client.get(exec_key)
+            poll_count += 1
+            elapsed = time.time() - (deadline - timeout_seconds)
             if data is not None:
+                logger.info(
+                    "[MengLa] webhook_ok execution_id=%s poll_count=%s waited_sec=%.1f",
+                    execution_id,
+                    poll_count,
+                    elapsed,
+                )
                 return json.loads(data)
+            if int(elapsed) >= last_log_sec + 10:
+                logger.info(
+                    "[MengLa] polling execution_id=%s poll_count=%s waited_sec=%.1f",
+                    execution_id,
+                    poll_count,
+                    elapsed,
+                )
+                last_log_sec = int(elapsed)
             await asyncio.sleep(0.1)
 
+        logger.warning(
+            "[MengLa] timeout execution_id=%s poll_count=%s waited_sec=%.1f timeout_sec=%s",
+            execution_id,
+            poll_count,
+            time.time() - (deadline - timeout_seconds),
+            timeout_seconds,
+        )
         raise TimeoutError(f"查询超时（等待 webhook 超过 {timeout_seconds} 秒）")
 
 

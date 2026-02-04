@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -427,7 +428,26 @@ async def query_mengla_domain(
 
     async def _fetch_and_persist() -> tuple[Any, str]:
         """真正向采集服务发请求并落库，供 in-flight 去重复用。"""
+        base_url = os.getenv("COLLECT_SERVICE_URL", "http://localhost:3001")
+        logger.info(
+            "[MengLa] collect_start action=%s timeout_sec=%s base_url=%s",
+            action,
+            timeout_seconds,
+            base_url.split("?")[0] if base_url else "",
+        )
+        t0 = time.time()
         result = await service.query(params, use_cache=False, timeout_seconds=timeout_seconds)
+        elapsed = time.time() - t0
+        try:
+            result_size = len(json.dumps(result, ensure_ascii=False))
+        except (TypeError, ValueError):
+            result_size = -1
+        logger.info(
+            "[MengLa] collect_done action=%s elapsed_sec=%.2f result_size=%s",
+            action,
+            elapsed,
+            result_size,
+        )
 
         # 6. 落库：趋势按颗粒拆分为多文档写入，其他单条写入
         if _is_result_empty(result, action):

@@ -431,6 +431,14 @@ export default function App() {
     (mode === "hot" && hotQuery.error) ||
     (mode === "chance" && chanceQuery.error);
 
+  // 调试：将失败原因输出到控制台，便于与后端日志对照
+  if (error) {
+    console.error("[MengLa] 加载萌拉数据失败", {
+      mode,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   const errorMessage = error ? "加载萌拉数据失败" : "";
 
   return (
