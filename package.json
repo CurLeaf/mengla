@@ -5,6 +5,10 @@
     "dev": "pnpm exec concurrently -n api,web -c cyan,green \"uvicorn backend.main:app --reload --port 8000\" \"pnpm --filter industry-monitor-frontend dev\"",
     "dev:backend": "uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000",
     "dev:frontend": "pnpm --filter industry-monitor-frontend dev",
+    "docker:up": "docker compose -f docker/dev/docker-compose.yml up -d",
+    "docker:logs": "docker compose -f docker/dev/docker-compose.yml logs -f",
+    "docker:logs:redis": "docker compose -f docker/dev/docker-compose.yml logs -f redis",
+    "docker:logs:mongo": "docker compose -f docker/dev/docker-compose.yml logs -f mongodb",
     "build": "pnpm --filter industry-monitor-frontend build",
     "preview": "pnpm --filter industry-monitor-frontend preview"
   },

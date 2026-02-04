@@ -302,8 +302,8 @@ async def query_mengla_domain(
             cursor = collection.find(mongo_query)
             existing_docs = await cursor.to_list(length=len(period_keys_list) + 100)
         by_key = {d["period_key"]: d for d in existing_docs}
+        # 全量命中：范围内每个 period_key 都有文档，直接合并返回
         if period_keys_list and all(pk in by_key for pk in period_keys_list):
-            # 按 period_key 顺序合并为前端期望的 { industryTrendRange: { data: [...] } }
             points = []
             for pk in period_keys_list:
                 doc = by_key[pk]
@@ -330,6 +330,36 @@ async def query_mengla_domain(
                     params_hash,
                 )
                 return (merged, "mongo")
+        # 部分命中：Mongo 中只有范围内部分日期的数据，也合并返回，避免走采集超时
+        if period_keys_list and by_key:
+            points = []
+            for pk in period_keys_list:
+                if pk not in by_key:
+                    continue
+                doc = by_key[pk]
+                data = doc.get("data")
+                if not data:
+                    continue
+                unwrapped = _unwrap_result_data(data)
+                if isinstance(unwrapped, dict):
+                    trend = unwrapped.get("industryTrendRange")
+                    if isinstance(trend, list):
+                        points.extend(trend)
+                    elif isinstance(trend, dict) and isinstance(trend.get("data"), list):
+                        points.extend(trend["data"])
+                elif isinstance(unwrapped, list):
+                    points.extend(unwrapped)
+            if points:
+                points.sort(key=lambda p: (p.get("timest") or "") if isinstance(p, dict) else "")
+                merged = {"industryTrendRange": {"data": points}}
+                logger.info(
+                    "MengLa Mongo partial (trend): collection=%s requested=%s found=%s hash=%s",
+                    cfg["collection"],
+                    len(period_keys_list),
+                    len(by_key),
+                    params_hash,
+                )
+                return (merged, "mongo", {"partial": True, "requested": len(period_keys_list), "found": len(by_key)})
         existing = None
     else:
         mongo_query = {

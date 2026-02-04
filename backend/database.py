@@ -18,10 +18,27 @@ mongo_db = None
 redis_client: Optional[aioredis.Redis] = None
 
 
+def _mask_uri(uri: str) -> str:
+    """Hide password in URI for logging."""
+    if "@" in uri and "://" in uri:
+        pre, rest = uri.split("://", 1)
+        if "@" in rest:
+            creds, host = rest.rsplit("@", 1)
+            if ":" in creds:
+                user, _ = creds.split(":", 1)
+                return f"{pre}://{user}:****@{host}"
+        return f"{pre}://****@{rest.split('@', 1)[-1]}"
+    return uri
+
+
 async def connect_to_mongo(uri: str, db_name: str) -> None:
     global mongo_client, mongo_db
     mongo_client = motor.motor_asyncio.AsyncIOMotorClient(uri)
     mongo_db = mongo_client[db_name]
+    import logging
+    logging.getLogger("mengla-backend").info(
+        "[DB] Mongo connected uri=%s db=%s", _mask_uri(uri), db_name
+    )
 
 
 async def disconnect_mongo() -> None:
@@ -35,6 +52,10 @@ async def disconnect_mongo() -> None:
 async def connect_to_redis(uri: str) -> None:
     global redis_client
     redis_client = aioredis.from_url(uri, encoding="utf-8", decode_responses=True)
+    import logging
+    logging.getLogger("mengla-backend").info(
+        "[DB] Redis connected uri=%s", _mask_uri(uri)
+    )
 
 
 async def disconnect_redis() -> None:

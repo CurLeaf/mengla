@@ -186,7 +186,7 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
                 detail=f"catId 必须在 backend/category.json 中：当前 catId={cat_id} 不在类目列表中",
             )
     try:
-        data, source = await query_mengla_domain(
+        result = await query_mengla_domain(
             action=action,
             product_id=body.product_id or "",
             catId=body.catId or "",
@@ -196,6 +196,8 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
             endRange=body.endRange or "",
             extra=body.extra or {},
         )
+        data, source = result[0], result[1]
+        extra = result[2] if len(result) > 2 else None
         if (body.catId or "").strip():
             secondary = get_secondary_categories((body.catId or "").strip())
             if isinstance(data, dict):
@@ -212,10 +214,11 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
             size,
             elapsed,
         )
-        return JSONResponse(
-            content=data,
-            headers={"X-MengLa-Source": source, "Access-Control-Expose-Headers": "X-MengLa-Source"},
-        )
+        headers = {"X-MengLa-Source": source, "Access-Control-Expose-Headers": "X-MengLa-Source"}
+        if extra and extra.get("partial") and action == "industryTrendRange":
+            headers["X-MengLa-Trend-Partial"] = f"{extra.get('requested', 0)},{extra.get('found', 0)}"
+            headers["Access-Control-Expose-Headers"] = "X-MengLa-Source, X-MengLa-Trend-Partial"
+        return JSONResponse(content=data, headers=headers)
     except TimeoutError as exc:
         logger.error(
             "MengLa query timeout type=%s message=%s",
@@ -584,7 +587,7 @@ async def mengla_webhook(request: Request):
         or payload.get("execution_id")
     )
     logger.info(
-        "收到 MengLa webhook 回调 (POST): executionId=%s keys=%s",
+        "[MengLa] webhook received executionId=%s keys=%s",
         execution_id,
         list(payload.keys()) if isinstance(payload, dict) else "?",
     )
@@ -598,7 +601,7 @@ async def mengla_webhook(request: Request):
         ex=60 * 30,
     )
     res = {"status": "ok"}
-    logger.info("已将数据写入 Redis: mengla:exec:%s", execution_id)
+    logger.info("[MengLa] redis_set key=mengla:exec:%s", execution_id)
     return res
 
 
@@ -630,7 +633,7 @@ async def mengla_query(body: MengLaQueryBody):
                 detail=f"catId 必须在 backend/category.json 中：当前 catId={cat_id} 不在类目列表中",
             )
     try:
-        data, source = await query_mengla_domain(
+        result = await query_mengla_domain(
             action=body.action,
             product_id=body.product_id or "",
             catId=body.catId or "",
@@ -640,6 +643,8 @@ async def mengla_query(body: MengLaQueryBody):
             endRange=body.endRange or "",
             extra=body.extra or {},
         )
+        data, source = result[0], result[1]
+        extra = result[2] if len(result) > 2 else None
         if (body.catId or "").strip():
             secondary = get_secondary_categories((body.catId or "").strip())
             if isinstance(data, dict):
@@ -656,7 +661,11 @@ async def mengla_query(body: MengLaQueryBody):
             size,
             elapsed,
         )
-        return JSONResponse(content=data, headers={"X-MengLa-Source": source, "Access-Control-Expose-Headers": "X-MengLa-Source"})
+        headers = {"X-MengLa-Source": source, "Access-Control-Expose-Headers": "X-MengLa-Source"}
+        if extra and extra.get("partial") and body.action == "industryTrendRange":
+            headers["X-MengLa-Trend-Partial"] = f"{extra.get('requested', 0)},{extra.get('found', 0)}"
+            headers["Access-Control-Expose-Headers"] = "X-MengLa-Source, X-MengLa-Trend-Partial"
+        return JSONResponse(content=data, headers=headers)
     except TimeoutError as exc:
         logger.error(
             "MengLa query timeout type=%s message=%s",

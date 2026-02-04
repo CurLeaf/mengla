@@ -31,7 +31,13 @@
 
 ---
 
-## 四、同时查看后端与前端信息
+## 四、Docker 下 Redis / MongoDB 日志追踪
+
+Redis、Mongo 使用 Docker 时，可通过容器日志与 Redis MONITOR 对照后端行为。详见 **doc/docker-logs-and-tracing.md**。根目录提供：`pnpm docker:up`、`pnpm docker:logs`、`pnpm docker:logs:redis`、`pnpm docker:logs:mongo`。
+
+---
+
+## 五、同时查看后端与前端信息
 
 - **后端**：看启动 uvicorn 的终端输出；若需更细粒度，可配置 Python logging 将 `mengla-backend`、`mengla-domain`、`mengla_client` 等 logger 输出到控制台并设置 DEBUG 或 INFO。
 - **前端**：浏览器打开前端页面（如 5173），使用开发者工具 Network 查看对 8000 端口的请求（状态码、耗时、请求/响应体）；Console 查看前端打印的错误或 `[MengLa] 请求失败` 等日志。
@@ -39,7 +45,7 @@
 
 ---
 
-## 五、架构如何调整
+## 六、架构如何调整
 
 - **定位**：本仓库为单 repo、双模块——backend（Python）与 frontend（Node）并列，根目录只做编排，不写业务。
 - **模块边界**：backend 仅暴露 HTTP API（含 `/api/mengla/*`），前端通过环境变量或默认 `http://localhost:8000` 访问；除 CORS 与接口契约外，两者无构建期耦合。
@@ -50,7 +56,7 @@
 
 ---
 
-## 六、后续实施顺序建议
+## 七、后续实施顺序建议
 
 1. 在 backend 为 MengLa 相关接口与 `query_mengla_domain` 增加上述调试日志（不改业务逻辑）。
 2. 确认根目录 `pnpm dev` 与 VS Code 任务能稳定同时起 backend + frontend，且前端能访问 8000。
