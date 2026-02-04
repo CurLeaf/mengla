@@ -42,20 +42,8 @@ from ..infra.resilience import (
 from ..infra.logger import get_collect_logger, CollectLogger
 
 
-# 旧配置保留兼容
-ACTION_CONFIG: Dict[str, Dict[str, str]] = {
-    "high": {"collection": "mengla_high_reports", "redis_prefix": "mengla:high"},
-    "hot": {"collection": "mengla_hot_reports", "redis_prefix": "mengla:hot"},
-    "chance": {"collection": "mengla_chance_reports", "redis_prefix": "mengla:chance"},
-    "industryViewV2": {
-        "collection": "mengla_view_reports",
-        "redis_prefix": "mengla:view",
-    },
-    "industryTrendRange": {
-        "collection": "mengla_trend_reports",
-        "redis_prefix": "mengla:trend",
-    },
-}
+# 有效的 action 列表
+VALID_ACTIONS = {"high", "hot", "chance", "industryViewV2", "industryTrendRange"}
 
 
 logger = logging.getLogger("mengla-domain")
@@ -249,7 +237,7 @@ def _get_trend_points_from_result(result: Any) -> list:
     return []
 
 
-async def query_mengla_domain(
+async def _fetch_mengla_data(
     *,
     action: str,
     product_id: str = "",
@@ -262,14 +250,10 @@ async def query_mengla_domain(
     timeout_seconds: Optional[int] = None,
 ) -> tuple[Any, str]:
     """
-    统一的 MengLa 领域查询逻辑：
-    返回 (data, source)，source 为 "mongo" | "redis" | "fresh"，便于排查缓存。
-    查询顺序：1) MongoDB  2) Redis  3) 采集服务（fresh），命中后返回，未命中则继续下一级。
-    - 根据 action + dateType + timest 计算 granularity + period_key
-    - 先按 (granularity, period_key, params_hash) 查 Mongo，再查 Redis，最后调 MengLaService
-    - 从采集服务拉取后写入 Mongo 与 Redis 参数缓存
+    内部采集函数：直接查询 MongoDB/Redis 或调用外部采集服务
+    返回 (data, source)，source 为 "mongo" | "redis" | "fresh"
     """
-    # 确保 Mongo 已初始化；如果 FastAPI 启动钩子未执行，这里兜底连接一次
+    # 确保 Mongo 已初始化
     if database.mongo_db is None:
         mongo_uri = os.getenv("MONGO_URI", database.MONGO_URI_DEFAULT)
         mongo_db_name = os.getenv("MONGO_DB", database.MONGO_DB_DEFAULT)
@@ -277,9 +261,13 @@ async def query_mengla_domain(
         if database.mongo_db is None:
             raise RuntimeError("MongoDB 未初始化")
 
-    cfg = ACTION_CONFIG.get(action)
-    if cfg is None:
+    if action not in VALID_ACTIONS:
         raise ValueError(f"未知的 MengLa action: {action}")
+    
+    # 使用统一集合
+    collection = database.mongo_db[COLLECTION_NAME]
+    cat_id = catId or ""
+    redis_prefix = build_redis_data_key(action, cat_id, "", "")
 
     # 1. 解析时间：行业趋势按粒度+范围内 period_key 列表；其他按单时间点 (granularity, period_key)
     is_trend = action == "industryTrendRange"
@@ -317,18 +305,8 @@ async def query_mengla_domain(
         period_keys_list = None
         start_dashed = end_dashed = None
 
-    # 2. 参数 hash：趋势按颗粒存储，hash 不包含 starRange/endRange，便于多 key 共用
-    params_hash = _build_params_hash(
-        action=action,
-        product_id=product_id or "",
-        catId=catId or "",
-        starRange="" if is_trend else (starRange or ""),
-        endRange="" if is_trend else (endRange or ""),
-        extra=extra,
-    )
-    redis_param_key = f"{cfg['redis_prefix']}:{granularity}:{period_key or ''}:{params_hash}"
-
-    collection = database.mongo_db[cfg["collection"]]
+    # 2. Redis key（使用新格式）
+    redis_param_key = build_redis_data_key(action, cat_id, granularity, period_key or "")
 
     # 3. 优先从 MongoDB 查（趋势：范围内各 period_key 查齐后合并返回；其他：单条）
     if is_trend:
@@ -337,11 +315,11 @@ async def query_mengla_domain(
             existing_docs = []
         else:
             mongo_query = {
+                "action": action,
+                "cat_id": cat_id,
                 "granularity": granularity,
                 "period_key": {"$in": period_keys_list},
-                "params_hash": params_hash,
             }
-            # 趋势按 key 唯一，不按整批去重
             cursor = collection.find(mongo_query)
             existing_docs = await cursor.to_list(length=len(period_keys_list) + 100)
         by_key = {d["period_key"]: d for d in existing_docs}
@@ -366,11 +344,8 @@ async def query_mengla_domain(
                 points.sort(key=lambda p: (p.get("timest") or "") if isinstance(p, dict) else "")
                 merged = {"industryTrendRange": {"data": points}}
                 logger.info(
-                    "MengLa Mongo hit (trend): collection=%s granularity=%s keys=%s hash=%s",
-                    cfg["collection"],
-                    granularity,
-                    len(period_keys_list),
-                    params_hash,
+                    "MengLa Mongo hit (trend): action=%s cat_id=%s granularity=%s keys=%s",
+                    action, cat_id, granularity, len(period_keys_list),
                 )
                 return (merged, "mongo")
         # 部分命中：Mongo 中只有范围内部分日期的数据，也合并返回，避免走采集超时
@@ -396,21 +371,19 @@ async def query_mengla_domain(
                 points.sort(key=lambda p: (p.get("timest") or "") if isinstance(p, dict) else "")
                 merged = {"industryTrendRange": {"data": points}}
                 logger.info(
-                    "MengLa Mongo partial (trend): collection=%s requested=%s found=%s hash=%s",
-                    cfg["collection"],
-                    len(period_keys_list),
-                    len(by_key),
-                    params_hash,
+                    "MengLa Mongo partial (trend): action=%s requested=%s found=%s",
+                    action, len(period_keys_list), len(by_key),
                 )
                 return (merged, "mongo", {"partial": True, "requested": len(period_keys_list), "found": len(by_key)})
         existing = None
     else:
         mongo_query = {
+            "action": action,
+            "cat_id": cat_id,
             "granularity": granularity,
             "period_key": period_key,
-            "params_hash": params_hash,
         }
-        await _dedupe_by_query(collection, mongo_query, cfg["collection"])
+        await _dedupe_by_query(collection, mongo_query, COLLECTION_NAME)
         existing = await collection.find_one(mongo_query)
         if existing is not None:
             data = existing.get("data")
@@ -419,16 +392,15 @@ async def query_mengla_domain(
                 data = None
             if existing is not None and data is not None:
                 logger.info(
-                    "MengLa Mongo hit: collection=%s query=%s hash=%s",
-                    cfg["collection"],
-                    mongo_query,
-                    params_hash,
+                    "MengLa Mongo hit: action=%s cat_id=%s granularity=%s period_key=%s",
+                    action, cat_id, granularity, period_key,
                 )
                 if database.redis_client is not None:
+                    ttl = get_cache_ttl(granularity)
                     await database.redis_client.set(
                         redis_param_key,
                         json.dumps(data, ensure_ascii=False),
-                        ex=60 * 60 * 24,
+                        ex=ttl,
                     )
                 return (_unwrap_result_data(data), "mongo")
 
@@ -441,11 +413,8 @@ async def query_mengla_domain(
                 cached = None
             if cached is not None:
                 logger.info(
-                    "MengLa Redis cache hit: action=%s granularity=%s period_key=%s hash=%s",
-                    action,
-                    granularity,
-                    period_key,
-                    params_hash,
+                    "MengLa Redis hit: action=%s cat_id=%s granularity=%s period_key=%s",
+                    action, cat_id, granularity, period_key,
                 )
                 _unwrapped = _unwrap_result_data(_parsed)
                 return (_unwrapped, "redis")
@@ -522,80 +491,73 @@ async def query_mengla_domain(
             result_size,
         )
 
-        # 6. 落库：趋势按颗粒拆分为多文档写入，其他单条写入
+        # 6. 落库：趋势按颗粒拆分为多文档写入，其他单条写入（使用新统一集合结构）
         if _is_result_empty(result, action):
-            logger.info(
-                "MengLa skip persist (new result empty): action=%s",
-                action,
-            )
+            logger.info("MengLa skip persist (empty): action=%s", action)
         else:
             now = datetime.utcnow()
+            ttl = get_cache_ttl(granularity)
+            expired_at = get_expired_at(granularity)
+            
             if is_trend:
                 points = _get_trend_points_from_result(result)
-                ttl = 60 * 60 * 24 * 7 if granularity == "day" else 60 * 60 * 24 * 30
                 for point in points:
                     if not isinstance(point, dict):
                         continue
                     pt_timest = point.get("timest") or ""
                     pk = timest_to_period_key(granularity, pt_timest)
                     doc = {
+                        "action": action,
+                        "cat_id": cat_id,
                         "granularity": granularity,
                         "period_key": pk,
-                        "params_hash": params_hash,
                         "data": {"industryTrendRange": {"data": [point]}},
+                        "source": "fresh",
                         "created_at": now,
+                        "updated_at": now,
+                        "expired_at": expired_at,
                     }
-                    filter_period = {
+                    filter_doc = {
+                        "action": action,
+                        "cat_id": cat_id,
                         "granularity": granularity,
                         "period_key": pk,
-                        "params_hash": params_hash,
                     }
-                    await collection.replace_one(filter_period, doc, upsert=True)
+                    await collection.replace_one(filter_doc, doc, upsert=True)
                     if database.redis_client is not None:
-                        rk = f"{cfg['redis_prefix']}:{granularity}:{pk}:{params_hash}"
+                        rk = build_redis_data_key(action, cat_id, granularity, pk)
                         await database.redis_client.set(
                             rk, json.dumps(doc["data"], ensure_ascii=False), ex=ttl
                         )
                 logger.info(
-                    "MengLa stored to Mongo (trend): collection=%s granularity=%s points=%s hash=%s",
-                    cfg["collection"],
-                    granularity,
-                    len(points),
-                    params_hash,
+                    "MengLa stored (trend): action=%s cat_id=%s granularity=%s points=%s",
+                    action, cat_id, granularity, len(points),
                 )
             else:
                 existing_again = await collection.find_one(mongo_query)
                 if existing_again is not None and not _is_stored_data_empty(existing_again):
                     logger.info(
-                        "MengLa skip persist (DB already has data): action=%s query=%s",
-                        action,
-                        mongo_query,
+                        "MengLa skip persist (exists): action=%s cat_id=%s period_key=%s",
+                        action, cat_id, period_key,
                     )
                 else:
                     doc = {
+                        "action": action,
+                        "cat_id": cat_id,
                         "granularity": granularity,
                         "period_key": period_key,
-                        "params_hash": params_hash,
                         "data": result,
+                        "source": "fresh",
                         "created_at": now,
+                        "updated_at": now,
+                        "expired_at": expired_at,
                     }
-                    await collection.replace_one(
-                        {
-                            "granularity": granularity,
-                            "period_key": period_key,
-                            "params_hash": params_hash,
-                        },
-                        doc,
-                        upsert=True,
-                    )
+                    await collection.replace_one(mongo_query, doc, upsert=True)
                     logger.info(
-                        "MengLa stored to Mongo: collection=%s doc_keys=%s hash=%s",
-                        cfg["collection"],
-                        list(doc.keys()),
-                        params_hash,
+                        "MengLa stored: action=%s cat_id=%s granularity=%s period_key=%s",
+                        action, cat_id, granularity, period_key,
                     )
                     if database.redis_client is not None:
-                        ttl = 60 * 60 * 24 * 7 if granularity == "day" else 60 * 60 * 24 * 30
                         await database.redis_client.set(
                             redis_param_key, json.dumps(result, ensure_ascii=False), ex=ttl
                         )
@@ -609,7 +571,7 @@ async def query_mengla_domain(
         return (_unwrapped, "fresh")
 
     # 使用 in-flight 表防止同参并发多次打采集
-    request_key = f"{action}:{params_hash}"
+    request_key = f"{action}:{cat_id}:{granularity}:{period_key or ''}"
     existing_task = IN_FLIGHT.get(request_key)
     if existing_task is not None:
         return await existing_task
@@ -655,7 +617,7 @@ async def collect_batch(
     async def execute_one(task: Dict[str, Any]) -> Tuple[Dict[str, Any], Any, str, Optional[Exception]]:
         async with semaphore:
             try:
-                data, source = await query_mengla_domain(**task)
+                data, source = await _fetch_mengla_data(**task)
                 return (task, data, source, None)
             except Exception as e:
                 logger.warning("Batch collect task failed: %s error=%s", task, e)
@@ -728,9 +690,9 @@ async def collect_batch_with_retry(
 
 
 # ==============================================================================
-# 新版采集接口（使用三级缓存）
+# 统一采集接口（三级缓存 + 熔断器）
 # ==============================================================================
-async def query_mengla_v2(
+async def query_mengla(
     *,
     action: str,
     cat_id: str = "",
@@ -741,7 +703,10 @@ async def query_mengla_v2(
     timeout_seconds: Optional[int] = None,
 ) -> Tuple[Any, str]:
     """
-    新版 MengLa 查询接口（使用三级缓存架构）
+    统一的 MengLa 查询接口
+    
+    缓存层级：L1 本地缓存 → L2 Redis → L3 MongoDB → 外部采集
+    附加功能：熔断器保护、结构化日志
     
     Args:
         action: 操作类型 (high/hot/chance/industryViewV2/industryTrendRange)
@@ -753,7 +718,7 @@ async def query_mengla_v2(
         timeout_seconds: 超时时间
     
     Returns:
-        (data, source) 元组
+        (data, source) 元组，source 为 "l1" | "l2" | "l3" | "fresh"
     """
     collect_logger = get_collect_logger()
     cache_manager = get_cache_manager()
@@ -777,8 +742,8 @@ async def query_mengla_v2(
         circuit = await circuit_manager.get_or_create(f"mengla_{action}")
         
         async def fetch_from_service():
-            # 调用原有的 query_mengla_domain（会写入旧集合）
-            data, source = await query_mengla_domain(
+            # 调用内部采集函数
+            data, source = await _fetch_mengla_data(
                 action=action,
                 product_id="",
                 catId=cat_id,
@@ -793,7 +758,7 @@ async def query_mengla_v2(
         
         data, source = await circuit.call(fetch_from_service)
         
-        # 3. 写入新的三级缓存
+        # 3. 写入三级缓存
         duration_ms = int((time.time() - start_time) * 1000)
         await cache_manager.set(
             action, cat_id, granularity, period_key,
@@ -816,4 +781,3 @@ async def query_mengla_v2(
         
     finally:
         collect_logger.finish()
-

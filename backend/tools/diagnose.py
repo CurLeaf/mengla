@@ -116,12 +116,7 @@ async def check_data(verbose: bool = True) -> dict:
         
         # 检查各集合
         collections = [
-            ("mengla_data", "统一数据集合(新)"),
-            ("mengla_high_reports", "蓝海Top行业"),
-            ("mengla_hot_reports", "热销Top行业"),
-            ("mengla_chance_reports", "潜力Top行业"),
-            ("mengla_view_reports", "行业区间"),
-            ("mengla_trend_reports", "行业趋势"),
+            ("mengla_data", "统一数据集合"),
             ("crawl_jobs", "爬取任务"),
             ("crawl_subtasks", "爬取子任务"),
         ]

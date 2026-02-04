@@ -4,5 +4,5 @@ from .types import (
     IndustryTrendPoint, IndustryTrendResponse, IndustryViewPayload, IndustryViewResponse,
 )
 from .client import MengLaQueryParams, MengLaService, get_mengla_service
-from .domain import ACTION_CONFIG, query_mengla_domain
+from .domain import VALID_ACTIONS, query_mengla
 from .queue import CRAWL_JOBS, CRAWL_SUBTASKS, create_crawl_job, get_next_job

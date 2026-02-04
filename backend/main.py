@@ -28,7 +28,7 @@ from .infra import database
 from .infra.database import init_db_events
 from .scheduler import init_scheduler, PANEL_TASKS
 from .tools.backfill import backfill_data
-from .core.domain import ACTION_CONFIG, query_mengla_domain
+from .core.domain import VALID_ACTIONS, query_mengla
 from .utils.period import period_keys_in_range
 from .utils.dashboard import get_panel_config, update_panel_config
 from .core.queue import create_crawl_job
@@ -345,26 +345,26 @@ async def get_mengla_status(body: MengLaStatusRequest):
     all_actions = ["high", "hot", "chance", "industryViewV2", "industryTrendRange"]
     actions = body.actions or all_actions
     # 过滤掉未知 action
-    unknown = [a for a in actions if a not in ACTION_CONFIG]
+    unknown = [a for a in actions if a not in VALID_ACTIONS]
     if unknown:
         raise HTTPException(status_code=400, detail=f"unknown actions: {unknown}")
 
     if database.mongo_db is None:
         raise HTTPException(status_code=500, detail="MongoDB not initialized")
 
+    # 使用统一集合
+    from .utils.config import COLLECTION_NAME
+    coll = database.mongo_db[COLLECTION_NAME]
     status: Dict[str, Dict[str, bool]] = {}
 
     for action in actions:
-        coll_name = ACTION_CONFIG[action]["collection"]
-        coll = database.mongo_db[coll_name]
-
         base_filter: Dict[str, Any] = {
+            "action": action,
             "granularity": gran,
             "period_key": {"$in": keys},
         }
-        # 如需精确到 catId，可根据实际数据结构在 data 内增加过滤：
-        # if body.catId:
-        #     base_filter["data.catId"] = body.catId
+        if body.catId:
+            base_filter["cat_id"] = body.catId
 
         cursor = coll.find(base_filter, {"period_key": 1})
         docs = await cursor.to_list(length=len(keys) * 2)
@@ -406,7 +406,7 @@ async def fill_mengla_missing(
         return
 
     all_actions = ["high", "hot", "chance", "industryViewV2", "industryTrendRange"]
-    to_run = [a for a in (actions or all_actions) if a in ACTION_CONFIG]
+    to_run = [a for a in (actions or all_actions) if a in VALID_ACTIONS]
     if not to_run:
         return
 

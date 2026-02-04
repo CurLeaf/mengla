@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..infra.database import mongo_db
-from .domain import ACTION_CONFIG
+from .domain import VALID_ACTIONS
 from ..utils.period import period_keys_in_range
 
 # Collection names
@@ -49,7 +49,7 @@ async def create_crawl_job(
 
     granules = granularities or DEFAULT_GRANULARITIES
     acts = actions or DEFAULT_ACTIONS
-    acts = [a for a in acts if a in ACTION_CONFIG]
+    acts = [a for a in acts if a in VALID_ACTIONS]
     config = {
         "start_date": start_date,
         "end_date": end_date,

@@ -169,7 +169,7 @@ DB_CONFIG = {
 # ==============================================================================
 COLLECTION_NAME = "mengla_data"
 
-# Action 映射（兼容旧代码）
+# Action 名称映射
 ACTION_MAPPING = {
     "high": "high",
     "hot": "hot",

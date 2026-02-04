@@ -97,35 +97,6 @@ async def ensure_indexes() -> None:
         logger.info(f"Index check completed for collection: {MENGLA_DATA_COLLECTION}")
     except Exception as e:
         logger.error(f"Error ensuring indexes: {e}")
-    
-    # 2. 旧集合的索引（兼容）
-    await ensure_legacy_indexes()
-
-
-async def ensure_legacy_indexes() -> None:
-    """
-    为旧 MengLa 集合创建唯一索引（兼容）：
-    所有集合统一按颗粒度 (granularity, period_key, params_hash)
-    """
-    if mongo_db is None:
-        return
-
-    single_period_spec = [("granularity", 1), ("period_key", 1), ("params_hash", 1)]
-
-    for name in [
-        "mengla_high_reports",
-        "mengla_hot_reports",
-        "mengla_chance_reports",
-        "mengla_view_reports",
-        "mengla_trend_reports",
-    ]:
-        try:
-            coll = mongo_db[name]
-            await coll.create_index(
-                single_period_spec, unique=True, name="uniq_period_params"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to create legacy index for {name}: {e}")
 
 
 def _mask_uri(uri: str) -> str:

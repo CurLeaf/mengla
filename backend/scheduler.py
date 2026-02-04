@@ -89,15 +89,6 @@ def init_scheduler() -> AsyncIOScheduler:
         name="补数检查",
     )
     
-    # 兼容旧任务：每日颗粒度补齐（保留原有功能）
-    scheduler.add_job(
-        run_mengla_granular_jobs,
-        "cron",
-        hour=2, minute=10,
-        id="legacy_granular",
-        name="旧版颗粒度补齐",
-    )
-    
     # 队列消费：定期执行待处理的爬取子任务（历史全量补齐）
     scheduler.add_job(
         run_crawl_queue_once,
