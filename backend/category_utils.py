@@ -7,7 +7,7 @@ from typing import List, Optional, Set
 from fastapi import HTTPException
 
 _CATEGORIES_CACHE: Optional[List[dict]] = None
-_CATEGORIES_PATH = Path(__file__).resolve().parent / "类目.json"
+_CATEGORIES_PATH = Path(__file__).resolve().parent / "category.json"
 
 
 def _ensure_categories_loaded() -> List[dict]:

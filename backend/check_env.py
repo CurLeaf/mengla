@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # 加载环境变量
-env_path = Path(__file__).resolve().parent / ".env"
+env_path = Path(__file__).resolve().parent.parent / ".env"
 print(f"加载 .env 文件: {env_path}")
 print(f"文件存在: {env_path.exists()}")
 print()

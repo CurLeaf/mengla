@@ -162,7 +162,7 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
         if cat_id not in valid_cat_ids:
             raise HTTPException(
                 status_code=400,
-                detail=f"catId 必须在 backend/类目.json 中：当前 catId={cat_id} 不在类目列表中",
+                detail=f"catId 必须在 backend/category.json 中：当前 catId={cat_id} 不在类目列表中",
             )
     try:
         data, source = await query_mengla_domain(
@@ -210,7 +210,7 @@ async def health_check():
 @app.get("/api/categories")
 async def get_categories():
     """
-    返回类目树，数据来源于 backend/类目.json。
+    返回类目树，数据来源于 backend/category.json。
     为避免频繁读大文件，使用简单内存缓存。
     """
     return get_all_categories()
@@ -447,7 +447,7 @@ async def enqueue_full_crawl(body: EnqueueFullCrawlRequest):
         if cat_id not in valid_cat_ids:
             raise HTTPException(
                 status_code=400,
-                detail=f"catId must be from backend/类目.json: {cat_id} not in list",
+                detail=f"catId must be from backend/category.json: {cat_id} not in list",
             )
 
     if database.mongo_db is None:
@@ -557,7 +557,7 @@ async def mengla_query(body: MengLaQueryBody):
     """
     统一的萌拉查询接口（蓝海 / 行业区间 / 行业趋势）：
     - 前端只需要传 action 和业务参数
-    - catId 必须为 backend/类目.json 中存在的类目 ID
+    - catId 必须为 backend/category.json 中存在的类目 ID
     - 后端统一做频控、调用托管任务、轮询 Redis、缓存结果，并落库 Mongo
     """
     cat_id = (body.catId or "").strip()
@@ -566,7 +566,7 @@ async def mengla_query(body: MengLaQueryBody):
         if cat_id not in valid_cat_ids:
             raise HTTPException(
                 status_code=400,
-                detail=f"catId 必须在 backend/类目.json 中：当前 catId={cat_id} 不在类目列表中",
+                detail=f"catId 必须在 backend/category.json 中：当前 catId={cat_id} 不在类目列表中",
             )
     try:
         data, source = await query_mengla_domain(

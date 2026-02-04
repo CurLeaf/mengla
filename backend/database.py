@@ -49,8 +49,8 @@ def init_db_events(app: FastAPI) -> None:
     async def _startup() -> None:
         import os
 
-        # 先加载 backend 目录下的 .env 文件（如果存在）
-        env_path = Path(__file__).resolve().parent / ".env"
+        # 加载项目根目录下的 .env 文件（如果存在）
+        env_path = Path(__file__).resolve().parent.parent / ".env"
         load_dotenv(dotenv_path=env_path, override=False)
 
         mongo_uri = os.getenv("MONGO_URI", MONGO_URI_DEFAULT)

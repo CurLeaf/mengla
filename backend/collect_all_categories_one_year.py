@@ -1,6 +1,6 @@
 """
 采集所有一级类目的近一年数据
-从 类目.json 读取所有一级类目（如：住宅和花园、服装、美容和卫生等）
+从 category.json 读取所有一级类目（如：住宅和花园、服装、美容和卫生等）
 为每个类目采集近一年的数据（包括日、月、季、年粒度）
 """
 import asyncio
@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # 加载环境变量
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

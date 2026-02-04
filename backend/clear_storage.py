@@ -7,8 +7,8 @@ from pathlib import Path
 import asyncio
 import os
 
-# 加载 backend/.env
-_env_path = Path(__file__).resolve().parent / ".env"
+# 加载项目根目录 .env
+_env_path = Path(__file__).resolve().parent.parent / ".env"
 if _env_path.exists():
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=_env_path)
