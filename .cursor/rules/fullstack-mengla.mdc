@@ -1,0 +1,66 @@
+---
+description: 萌拉数据接入的前后端与缓存规范
+globs: "**/*.{ts,tsx,py}"
+alwaysApply: false
+---
+
+# 萌拉数据接入全栈规范
+
+## 后端（FastAPI + MongoDB + Redis）
+
+- 所有与萌拉托管任务相关的调用必须通过 `backend/mengla_client.py` 中的 `MengLaService` 完成：
+  - 不在零散路由或脚本中直接拼 URL 调用第三方接口。
+  - 统一使用 `get_mengla_service()` 获取单例，复用频控与轮询逻辑。
+- 请求第三方服务时：
+  - 只允许使用环境变量配置地址与密钥：
+    - `COLLECT_SERVICE_URL`：托管任务服务基础 URL。
+    - `COLLECT_SERVICE_API_KEY`：访问托管任务服务的 Token。
+    - `APP_BASEURL`：当前 FastAPI 外部可访问地址，用于拼接 webhook URL。
+  - 禁止在代码中硬编码 URL 或 API Key。
+- Redis 使用约定：
+  - 执行结果轮询键：`mengla:exec:{executionId}`，由 webhook 写入，`MengLaService` 轮询读取。
+  - 参数缓存键：`mengla:cache:{JSON序列化的查询参数}`，用于 5 秒频控之外的结果复用。
+  - 所有 `set` 操作必须设置合理过期时间（如 30 分钟或 1 小时），避免无界增长。
+- Webhook 规范：
+  - 回调入口固定为 `/api/webhook/mengla-notify`。
+  - 回调体中必须包含 `executionId`（或数据结构中能够解析出该字段），否则返回 400。
+  - 完整 payload 以 JSON 字符串形式写入 Redis，供后续排查与前端展示。
+- 持久化到 MongoDB：
+  - 与萌拉相关的原始数据应存入 `industry_reports`，字段结构建议为：
+    - `interface_type: "mengla"` 或更具体的业务标识。
+    - `granularity: "raw"` 或对应业务维度。
+    - `data.menglaRaw`：保存完整原始响应，用于调试与回溯。
+
+## 前端（React + TS/JS）
+
+- 所有萌拉相关请求必须通过统一的 API 模块：
+  - 使用 `frontend/src/services/mengla-api` 中导出的 `queryMengla` 函数。
+  - 组件层禁止直接使用 `fetch`/`axios` 拼第三方地址或直接请求 FastAPI 的 `/api/mengla/query`，必须通过 service 调用。
+- API 调用约定：
+  - Base URL 通过 `import.meta.env.VITE_API_BASE_URL` / `VITE_API_URL` 提供，默认 `http://localhost:8000`，禁止硬编码。
+  - 调用参数与后端 `MengLaQueryBody` 对齐：`action`、`product_id`、`catId`、`dateType`、`timest`、`starRange`、`endRange`。
+  - 统一在 service 层处理错误日志，组件只负责展示用户友好的错误信息。
+- UI 使用规范：
+  - 列表、图表等展示组件应复用已有的卡片、排版、颜色和 Loading 状态样式，不在每个页面新造一套风格。
+  - 触发“查询萌拉数据”或“历史补录”这类操作时：
+    - 使用统一的按钮样式与 loading 状态（例如禁用状态 + 文案变更）。
+    - 避免多处复制粘贴相同的 loading 文本与逻辑，优先抽出复用的 hook 或组件。
+
+## 缓存与请求频率
+
+- 频率限制：
+  - 由后端 `MengLaService` 统一控制 5 秒请求间隔；前端不再实现额外节流逻辑。
+  - 前端不得为了“加速”而绕过后端频控直接请求第三方。
+- 轮询与超时：
+  - 轮询 Redis 的逻辑只能出现在后端服务中，且必须有明确超时（例如 30 秒），超时返回 504。
+  - 前端只感知一次 API 调用的成功或失败，避免自行轮询 Redis 或 Webhook。
+
+## 通用约定
+
+- 所有与萌拉相关的代码应集中在少数几个文件中：
+  - 后端：`mengla_client.py`、少量 FastAPI 路由。
+  - 前端：`src/services/mengla-api.*` 和使用它的页面 / 组件。
+- 如需新增与萌拉相关的功能：
+  - 优先扩展现有 Service/API 层，不要在随机文件中直接调用第三方。
+  - 遵循本规则中约定的环境变量前缀、Redis key 命名与 Mongo 字段结构。 
+

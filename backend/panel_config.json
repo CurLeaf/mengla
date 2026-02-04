@@ -1,0 +1,36 @@
+{
+  "modules": [
+    {
+      "id": "overview",
+      "name": "行业总览",
+      "enabled": true,
+      "order": 0,
+      "props": {}
+    },
+    {
+      "id": "high",
+      "name": "蓝海Top行业",
+      "enabled": true,
+      "order": 1,
+      "props": {}
+    },
+    {
+      "id": "hot",
+      "name": "热销Top行业",
+      "enabled": true,
+      "order": 2,
+      "props": {}
+    },
+    {
+      "id": "chance",
+      "name": "潜力Top行业",
+      "enabled": true,
+      "order": 3,
+      "props": {}
+    }
+  ],
+  "layout": {
+    "defaultPeriod": "month",
+    "showRankPeriodSelector": true
+  }
+}

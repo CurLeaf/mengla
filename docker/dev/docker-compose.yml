@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mengla-dev-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - ../../data/db:/data/db
+
+  redis:
+    image: redis:alpine
+    container_name: mengla-dev-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+

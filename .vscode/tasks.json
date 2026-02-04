@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Dev: Docker (Mongo+Redis)",
+      "type": "shell",
+      "command": "docker-compose -f docker/dev/docker-compose.yml up -d",
+      "group": "build"
+    },
+    {
+      "label": "Dev: Backend (FastAPI)",
+      "type": "shell",
+      "command": "python -m pip install -r backend/requirements.txt; python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000",
+      "options": {
+        "cwd": "."
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Dev: Frontend (Vite)",
+      "type": "shell",
+      "command": "pnpm dev",
+      "options": {
+        "cwd": "frontend"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Dev: Start All (hot)",
+      "dependsOn": [
+        "Dev: Docker (Mongo+Redis)",
+        "Dev: Backend (FastAPI)",
+        "Dev: Frontend (Vite)"
+      ],
+      "dependsOrder": "parallel"
+    }
+  ]
+}
+
