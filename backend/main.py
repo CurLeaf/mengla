@@ -175,7 +175,7 @@ class EnqueueFullCrawlRequest(BaseModel):
 
 async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> JSONResponse:
     """
-    内部：按 action 执行萌拉查询，校验 catId，调用 query_mengla_domain，统一异常处理。
+    内部：按 action 执行萌拉查询，校验 catId，调用 query_mengla，统一异常处理。
     返回 JSONResponse（含 X-MengLa-Source 头）。
     """
     t0 = time.time()
@@ -198,7 +198,7 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
                 detail=f"catId 必须在 backend/category.json 中：当前 catId={cat_id} 不在类目列表中",
             )
     try:
-        result = await query_mengla_domain(
+        result = await query_mengla(
             action=action,
             product_id=body.product_id or "",
             catId=body.catId or "",
@@ -389,7 +389,7 @@ async def fill_mengla_missing(
 ) -> None:
     """
     Fill missing MengLa data for the given granularity and date range.
-    For high/hot/chance/industryViewV2: one query_mengla_domain per period_key.
+    For high/hot/chance/industryViewV2: one query_mengla per period_key.
     For industryTrendRange: one call with starRange/endRange for the whole range.
     """
     gran = (granularity or "day").lower().strip()
@@ -414,15 +414,11 @@ async def fill_mengla_missing(
     for action in non_trend:
         for period_key in keys:
             try:
-                await query_mengla_domain(
+                await query_mengla(
                     action=action,
-                    product_id="",
                     catId="",
                     dateType=gran,
                     timest=period_key,
-                    starRange="",
-                    endRange="",
-                    extra={},
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
@@ -435,15 +431,12 @@ async def fill_mengla_missing(
 
     if "industryTrendRange" in to_run:
         try:
-            await query_mengla_domain(
+            await query_mengla(
                 action="industryTrendRange",
-                product_id="",
                 catId="",
                 dateType=gran,
-                timest="",
                 starRange=start_date,
                 endRange=end_date,
-                extra={},
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("fill_mengla_missing: industryTrendRange failed: %s", exc)
@@ -645,7 +638,7 @@ async def mengla_query(body: MengLaQueryBody):
                 detail=f"catId 必须在 backend/category.json 中：当前 catId={cat_id} 不在类目列表中",
             )
     try:
-        result = await query_mengla_domain(
+        result = await query_mengla(
             action=body.action,
             product_id=body.product_id or "",
             catId=body.catId or "",

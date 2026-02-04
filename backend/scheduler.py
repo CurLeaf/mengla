@@ -8,7 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .infra.database import mongo_db
 from .utils.period import make_period_keys, period_to_date_range
-from .core.domain import query_mengla_domain
+from .core.domain import query_mengla
 from .core.queue import (
     get_next_job,
     get_pending_subtasks,
@@ -137,7 +137,7 @@ async def run_daily_collect(target_date: Optional[datetime] = None) -> Dict[str,
         for action in NON_TREND_ACTIONS:
             stats["total"] += 1
             try:
-                await query_mengla_domain(
+                await query_mengla(
                     action=action,
                     product_id="",
                     catId=cat_id,
@@ -160,7 +160,7 @@ async def run_daily_collect(target_date: Optional[datetime] = None) -> Dict[str,
     for cat_id in top_cat_ids:
         stats["total"] += 1
         try:
-            await query_mengla_domain(
+            await query_mengla(
                 action=TREND_ACTION,
                 product_id="",
                 catId=cat_id,
@@ -197,7 +197,7 @@ async def run_monthly_collect(target_date: Optional[datetime] = None) -> Dict[st
         for action in NON_TREND_ACTIONS:
             stats["total"] += 1
             try:
-                await query_mengla_domain(
+                await query_mengla(
                     action=action,
                     product_id="",
                     catId=cat_id,
@@ -220,7 +220,7 @@ async def run_monthly_collect(target_date: Optional[datetime] = None) -> Dict[st
     for cat_id in top_cat_ids:
         stats["total"] += 1
         try:
-            await query_mengla_domain(
+            await query_mengla(
                 action=TREND_ACTION,
                 product_id="",
                 catId=cat_id,
@@ -257,7 +257,7 @@ async def run_quarterly_collect(target_date: Optional[datetime] = None) -> Dict[
         for action in NON_TREND_ACTIONS:
             stats["total"] += 1
             try:
-                await query_mengla_domain(
+                await query_mengla(
                     action=action,
                     product_id="",
                     catId=cat_id,
@@ -280,7 +280,7 @@ async def run_quarterly_collect(target_date: Optional[datetime] = None) -> Dict[
     for cat_id in top_cat_ids:
         stats["total"] += 1
         try:
-            await query_mengla_domain(
+            await query_mengla(
                 action=TREND_ACTION,
                 product_id="",
                 catId=cat_id,
@@ -317,7 +317,7 @@ async def run_yearly_collect(target_date: Optional[datetime] = None) -> Dict[str
         for action in NON_TREND_ACTIONS:
             stats["total"] += 1
             try:
-                await query_mengla_domain(
+                await query_mengla(
                     action=action,
                     product_id="",
                     catId=cat_id,
@@ -340,7 +340,7 @@ async def run_yearly_collect(target_date: Optional[datetime] = None) -> Dict[str
     for cat_id in top_cat_ids:
         stats["total"] += 1
         try:
-            await query_mengla_domain(
+            await query_mengla(
                 action=TREND_ACTION,
                 product_id="",
                 catId=cat_id,
@@ -403,7 +403,7 @@ async def run_backfill_check() -> Dict[str, Any]:
                         stats["missing"] += 1
                         # 触发补采
                         try:
-                            await query_mengla_domain(
+                            await query_mengla(
                                 action=action,
                                 product_id="",
                                 catId=cat_id,
@@ -429,7 +429,7 @@ async def run_mengla_jobs(target_date: Optional[datetime] = None) -> None:
     """
     每天凌晨针对 MengLa 的 high / view / trend 三个接口进行补齐：
     - 先计算当日对应的 day/month/quarter/year period_key
-    - 对于每个 action+granularity，复用 query_mengla_domain 的查 Mongo + 调第三方逻辑
+    - 对于每个 action+granularity，复用 query_mengla 的查 Mongo + 调第三方逻辑
     """
     now = target_date or datetime.now()
     periods = make_period_keys(now)
@@ -439,7 +439,7 @@ async def run_mengla_jobs(target_date: Optional[datetime] = None) -> None:
         for action, granularities in MENG_LA_ACTIONS.items():
             for gran in granularities:
                 period_key = periods[gran]
-                await query_mengla_domain(  # 返回 (data, source)，此处仅触发拉取与落库
+                await query_mengla(  # 返回 (data, source)，此处仅触发拉取与落库
                     action=action,
                     product_id="",
                     catId=cat_id,
@@ -457,7 +457,7 @@ async def run_mengla_granular_jobs(target_date: Optional[datetime] = None) -> No
     按日 / 月 / 季 / 年四种颗粒度进行补齐：
     - 非趋势接口：按当天对应的 day/month/quarter/year period_key 各触发一次查询。
     - 趋势接口：对近一年的 day/month/quarter/year 范围各触发一次查询。
-    所有查询统一复用 query_mengla_domain（先 Mongo / 再 Redis / 后采集）。
+    所有查询统一复用 query_mengla（先 Mongo / 再 Redis / 后采集）。
     """
     now = target_date or datetime.now()
     periods = make_period_keys(now)
@@ -468,7 +468,7 @@ async def run_mengla_granular_jobs(target_date: Optional[datetime] = None) -> No
         for action in ["high", "hot", "chance", "industryViewV2"]:
             for gran in ["day", "month", "quarter", "year"]:
                 period_key = periods[gran]
-                await query_mengla_domain(
+                await query_mengla(
                     action=action,
                     product_id="",
                     catId=cat_id,
@@ -486,7 +486,7 @@ async def run_mengla_granular_jobs(target_date: Optional[datetime] = None) -> No
 
     for cat_id in top_cat_ids:
         for gran in ["day", "month", "quarter", "year"]:
-            await query_mengla_domain(
+            await query_mengla(
                 action="industryTrendRange",
                 product_id="",
                 catId=cat_id,
@@ -502,7 +502,7 @@ async def run_mengla_granular_jobs(target_date: Optional[datetime] = None) -> No
 async def run_crawl_queue_once(max_batch: int = 1) -> None:
     """
     Queue consumer: pick one RUNNING/PENDING crawl job, run up to max_batch
-    pending subtasks (query_mengla_domain), update status and job stats.
+    pending subtasks (query_mengla), update status and job stats.
     """
     if mongo_db is None:
         return
@@ -526,7 +526,7 @@ async def run_crawl_queue_once(max_batch: int = 1) -> None:
         try:
             if action == "industryTrendRange":
                 start_range, end_range = period_to_date_range(gran, period_key)
-                await query_mengla_domain(
+                await query_mengla(
                     action=action,
                     product_id="",
                     catId=cat_id,
@@ -537,7 +537,7 @@ async def run_crawl_queue_once(max_batch: int = 1) -> None:
                     extra=extra,
                 )
             else:
-                await query_mengla_domain(
+                await query_mengla(
                     action=action,
                     product_id="",
                     catId=cat_id,

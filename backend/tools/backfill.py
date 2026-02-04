@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.infra import database
 from backend.utils.category import get_top_level_cat_ids
-from backend.core.domain import query_mengla_domain
+from backend.core.domain import query_mengla
 from backend.utils.period import period_keys_in_range, period_to_date_range
 from backend.core.queue import (
     CRAWL_JOBS,
@@ -192,7 +192,7 @@ async def backfill_data(
                             }.get(gran, "DAY")
                             
                             try:
-                                await query_mengla_domain(
+                                await query_mengla(
                                     action=action,
                                     product_id="",
                                     catId=cat_id,
@@ -228,7 +228,7 @@ async def backfill_data(
                                 continue
                             
                             try:
-                                await query_mengla_domain(
+                                await query_mengla(
                                     action=action,
                                     product_id="",
                                     catId=cat_id,
@@ -411,7 +411,7 @@ async def _run_worker(
                                 "year": "YEAR",
                             }.get(gran, "DAY")
                             
-                            await query_mengla_domain(
+                            await query_mengla(
                                 action=action,
                                 product_id="",
                                 catId=cat_id,
@@ -422,7 +422,7 @@ async def _run_worker(
                                 extra=extra,
                             )
                         else:
-                            await query_mengla_domain(
+                            await query_mengla(
                                 action=action,
                                 product_id="",
                                 catId=cat_id,

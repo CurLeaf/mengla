@@ -18,6 +18,7 @@ import {
 import { queryMengla } from "./services/mengla-api";
 import { fetchCategories } from "./services/category-api";
 import { fetchPanelConfig } from "./services/panel-config-api";
+import { MockDataSourceMonitor } from "./components/AdminCenter/MockDataSourceMonitor";
 import type { Category, CategoryChild, CategoryList } from "./types/category";
 import type {
   HighListRow,
@@ -34,7 +35,7 @@ const MODES = [
 ] as const;
 
 type ModeKey = (typeof MODES)[number]["key"];
-type AppView = ModeKey | "admin";
+type AppView = ModeKey | "admin" | "monitor";
 
 const VALID_PERIODS: PeriodType[] = ["update", "month", "quarter", "year"];
 
@@ -96,7 +97,8 @@ function buildTrendQueryParams(
 
 export default function App() {
   const [view, setView] = useState<AppView>("overview");
-  const mode: ModeKey = view === "admin" ? "overview" : view;
+  const mode: ModeKey = view === "admin" || view === "monitor" ? "overview" : view;
+  const [triggerLoading, setTriggerLoading] = useState(false);
   const [period, setPeriod] = useState<PeriodType>("month");
   const [timest, setTimest] = useState(() => getDefaultTimestForPeriod("month"));
   /** 行业总览趋势：四个 Tab（更新日期/月榜/季榜/年榜）+ 对应范围（日期/月/季/年） */
@@ -152,7 +154,8 @@ export default function App() {
   const showRankPeriodSelector = panelConfig?.layout?.showRankPeriodSelector !== false;
 
   useEffect(() => {
-    if (view === "admin") {
+    // admin 和 monitor 是特殊视图，不需要检查 effectiveModes
+    if (view === "admin" || view === "monitor") {
       if (!SHOW_ADMIN_CENTER) {
         setView(effectiveModes[0]?.key ?? "overview");
       }
@@ -329,6 +332,25 @@ export default function App() {
     }
   };
 
+  // 手动触发采集
+  const triggerManualCollect = async () => {
+    setTriggerLoading(true);
+    try {
+      const action = mode === "overview" ? "industryTrendRange" : mode;
+      const body = mode === "overview"
+        ? buildTrendQueryParams("industryTrendRange", primaryCatId, trendPeriod, trendRangeStart, trendRangeEnd)
+        : buildQueryParams(action, primaryCatId, period, timest);
+      
+      await queryMengla({ ...body, extra: { force_refresh: true } });
+      // 刷新当前查询
+      invalidateCurrent();
+    } catch (e) {
+      console.error("手动触发采集失败", e);
+    } finally {
+      setTriggerLoading(false);
+    }
+  };
+
   // 采集平台可能返回 resultData 或 data；resultData 可能嵌套多层，递归解包直到无 resultData
   const pickPayload = (raw: unknown): MenglaResponseData | undefined => {
     if (!raw || typeof raw !== "object") return undefined;
@@ -455,8 +477,21 @@ export default function App() {
             <div className="text-[11px] font-mono tracking-[0.25em] text-white/40 uppercase">
               MengLa
             </div>
-            <div className="mt-2 text-lg font-semibold bg-gradient-to-b from-white via-white/90 to-white/60 bg-clip-text text-transparent">
-              行业智能面板
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="text-lg font-semibold bg-gradient-to-b from-white via-white/90 to-white/60 bg-clip-text text-transparent">
+                行业智能面板
+              </span>
+              {view !== "admin" && view !== "monitor" && (
+                <button
+                  type="button"
+                  onClick={() => triggerManualCollect()}
+                  disabled={triggerLoading}
+                  className="px-2 py-1 text-[10px] bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  title="手动触发向数据源发送请求"
+                >
+                  {triggerLoading ? "采集中..." : "手动采集"}
+                </button>
+              )}
             </div>
           </div>
           <nav className="flex-1 overflow-y-auto py-3">
@@ -477,20 +512,36 @@ export default function App() {
               </button>
             ))}
             {SHOW_ADMIN_CENTER && (
-              <button
-                type="button"
-                className={`mt-2 w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors ${
-                  view === "admin"
-                    ? "bg-white/10 text-white"
-                    : "text-white/65 hover:bg-white/5"
-                }`}
-                onClick={() => setView("admin")}
-              >
-                <span>管理中心</span>
-                <span className="text-[10px] font-mono tracking-[0.2em] text-white/45">
-                  ADMIN
-                </span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  className={`mt-2 w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors ${
+                    view === "monitor"
+                      ? "bg-white/10 text-white"
+                      : "text-white/65 hover:bg-white/5"
+                  }`}
+                  onClick={() => setView("monitor")}
+                >
+                  <span>数据源监控</span>
+                  <span className="text-[10px] font-mono tracking-[0.2em] text-white/45">
+                    MONITOR
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors ${
+                    view === "admin"
+                      ? "bg-white/10 text-white"
+                      : "text-white/65 hover:bg-white/5"
+                  }`}
+                  onClick={() => setView("admin")}
+                >
+                  <span>管理中心</span>
+                  <span className="text-[10px] font-mono tracking-[0.2em] text-white/45">
+                    ADMIN
+                  </span>
+                </button>
+              </>
             )}
           </nav>
         </aside>
@@ -498,6 +549,21 @@ export default function App() {
         <main className="flex-1 min-h-0 flex flex-col px-8 py-6">
           {view === "admin" ? (
             <AdminCenterPage />
+          ) : view === "monitor" ? (
+            <div className="space-y-6">
+              <header>
+                <p className="text-xs font-mono tracking-[0.25em] text-white/50 uppercase">
+                  MONITOR
+                </p>
+                <h1 className="mt-2 text-2xl font-semibold bg-gradient-to-b from-white via-white/90 to-white/60 bg-clip-text text-transparent">
+                  数据源监控
+                </h1>
+                <p className="mt-1 text-[11px] text-white/55">
+                  实时监控模拟数据源的处理流程
+                </p>
+              </header>
+              <MockDataSourceMonitor />
+            </div>
           ) : (
             <div className="space-y-6">
           <header className="flex flex-col gap-4">

@@ -695,9 +695,18 @@ async def collect_batch_with_retry(
 async def query_mengla(
     *,
     action: str,
+    # 新参数名
     cat_id: str = "",
-    granularity: str = "day",
+    granularity: str = "",
     period_key: str = "",
+    # 旧参数名（兼容）
+    catId: str = "",
+    dateType: str = "",
+    timest: str = "",
+    starRange: str = "",
+    endRange: str = "",
+    product_id: str = "",
+    # 通用参数
     extra: Optional[Dict[str, Any]] = None,
     use_cache: bool = True,
     timeout_seconds: Optional[int] = None,
@@ -710,9 +719,10 @@ async def query_mengla(
     
     Args:
         action: 操作类型 (high/hot/chance/industryViewV2/industryTrendRange)
-        cat_id: 类目ID，空字符串表示全类目
-        granularity: 颗粒度 (day/month/quarter/year)
-        period_key: 时间周期 key
+        cat_id/catId: 类目ID，空字符串表示全类目
+        granularity/dateType: 颗粒度 (day/month/quarter/year)
+        period_key/timest: 时间周期 key
+        starRange/endRange: 趋势范围（仅 industryTrendRange 使用）
         extra: 额外参数
         use_cache: 是否使用缓存
         timeout_seconds: 超时时间
@@ -720,18 +730,27 @@ async def query_mengla(
     Returns:
         (data, source) 元组，source 为 "l1" | "l2" | "l3" | "fresh"
     """
+    # 参数兼容：新参数优先
+    _cat_id = cat_id or catId or ""
+    _granularity = normalize_granularity(granularity or dateType or "day")
+    _period_key = period_key or timest or ""
+    _star_range = starRange or ""
+    _end_range = endRange or ""
+    _product_id = product_id or ""
+    
     collect_logger = get_collect_logger()
     cache_manager = get_cache_manager()
     circuit_manager = get_circuit_manager()
     
     start_time = time.time()
-    trace_id = collect_logger.start(action, cat_id, granularity, period_key)
+    trace_id = collect_logger.start(action, _cat_id, _granularity, _period_key)
     
     try:
-        # 1. 检查三级缓存
-        if use_cache:
+        # 1. 检查三级缓存（非趋势接口）
+        is_trend = action == "industryTrendRange"
+        if use_cache and not is_trend:
             cached_data, cache_source = await cache_manager.get(
-                action, cat_id, granularity, period_key
+                action, _cat_id, _granularity, _period_key
             )
             if cached_data is not None:
                 duration_ms = int((time.time() - start_time) * 1000)
@@ -745,12 +764,12 @@ async def query_mengla(
             # 调用内部采集函数
             data, source = await _fetch_mengla_data(
                 action=action,
-                product_id="",
-                catId=cat_id,
-                dateType=granularity,
-                timest=period_key,
-                starRange="",
-                endRange="",
+                product_id=_product_id,
+                catId=_cat_id,
+                dateType=_granularity,
+                timest=_period_key,
+                starRange=_star_range,
+                endRange=_end_range,
                 extra=extra,
                 timeout_seconds=timeout_seconds,
             )
@@ -758,12 +777,13 @@ async def query_mengla(
         
         data, source = await circuit.call(fetch_from_service)
         
-        # 3. 写入三级缓存
+        # 3. 写入三级缓存（非趋势接口）
         duration_ms = int((time.time() - start_time) * 1000)
-        await cache_manager.set(
-            action, cat_id, granularity, period_key,
-            data, source="fresh", collect_duration_ms=duration_ms
-        )
+        if not is_trend:
+            await cache_manager.set(
+                action, _cat_id, _granularity, _period_key,
+                data, source="fresh", collect_duration_ms=duration_ms
+            )
         
         collect_logger.success(source, duration_ms)
         return (data, source)
