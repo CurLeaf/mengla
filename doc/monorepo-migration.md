@@ -107,6 +107,7 @@ packages:
   - `pnpm dev` / `pnpm build` / `pnpm preview` 通过 `--filter` 调用 frontend 脚本。
 - 如需单独开发 frontend：`cd frontend && pnpm dev` 仍可用。
 - 迁移后可将 **frontend/pnpm-lock.yaml** 删除，仅保留根目录的 **pnpm-lock.yaml**。
+- **一键执行迁移**：在仓库根目录执行 `.\scripts\migrate-monorepo.ps1`，脚本会创建根目录配置、执行 `pnpm install` 并删除 `frontend/pnpm-lock.yaml`。
 
 ### 4.4 其他需注意
 

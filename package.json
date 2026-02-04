@@ -1,0 +1,12 @@
+﻿{
+  "name": "mengla-data-collect",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter industry-monitor-frontend dev",
+    "build": "pnpm --filter industry-monitor-frontend build",
+    "preview": "pnpm --filter industry-monitor-frontend preview"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.3"
+  }
+}
