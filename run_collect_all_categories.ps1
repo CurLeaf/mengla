@@ -7,7 +7,7 @@ Write-Host "包括：住宅和花园、服装、美容和卫生等"
 Write-Host "时间范围：近一年（日、月、季、年粒度）"
 Write-Host ""
 
-python backend\collect_all_categories_one_year.py
+python -m backend.backfill single --years 1
 
 Write-Host ""
 Write-Host "按任意键退出..."

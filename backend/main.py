@@ -27,9 +27,8 @@ for _name in ("mengla-backend", "mengla-domain", "backend.mengla_client"):
 from . import database
 from .database import init_db_events
 from .scheduler import init_scheduler, PANEL_TASKS
-from .backfill_configurable import backfill_data
+from .backfill import backfill_data
 from .mengla_domain import ACTION_CONFIG, query_mengla_domain
-from .mengla_indexes import ensure_mengla_indexes
 from .period_utils import period_keys_in_range
 from .dashboard_config import get_panel_config, update_panel_config
 from .mengla_crawl_queue import create_crawl_job
@@ -88,7 +87,8 @@ async def _start_scheduler() -> None:
 
 @app.on_event("startup")
 async def _init_indexes() -> None:
-    await ensure_mengla_indexes()
+    # 索引已在 database.init_db_events 的 startup 中创建
+    pass
 
 
 @app.on_event("startup")
