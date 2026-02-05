@@ -24,7 +24,6 @@ backend/
 │
 ├── tools/             # 独立工具
 │   ├── backfill.py    # 数据补录
-│   ├── mock_source.py # 模拟数据源
 │   ├── diagnose.py    # 诊断工具
 │   └── clear_storage.py # 清理存储
 │
@@ -49,9 +48,6 @@ python -m backend.tools.diagnose
 python -m backend.tools.backfill single --days 30
 python -m backend.tools.backfill queue create --years 1
 python -m backend.tools.backfill queue worker --workers 3
-
-# 模拟数据源
-python -m uvicorn backend.tools.mock_source:app --port 3001
 
 # 清理存储
 python -m backend.tools.clear_storage

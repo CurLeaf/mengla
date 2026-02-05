@@ -783,33 +783,6 @@ async def root():
     return {"message": "Industry Monitor API running"}
 
 
-@app.post("/api/mengla/query-mock")
-async def mengla_query_mock(body: MengLaQueryBody):
-    """
-    临时 Mock 接口：用于在采集服务不可达时测试前端
-    使用方法：前端临时修改 API 地址为 /api/mengla/query-mock
-    """
-    from .mock_data_helper import (
-        get_mock_high_data,
-        get_mock_industry_view_data,
-        get_mock_industry_trend_data,
-    )
-    
-    action = body.action
-    if action == "high":
-        return get_mock_high_data()
-    elif action == "hot":
-        return get_mock_high_data()  # 复用蓝海数据
-    elif action == "chance":
-        return get_mock_high_data()  # 复用蓝海数据
-    elif action == "industryViewV2":
-        return get_mock_industry_view_data()
-    elif action == "industryTrendRange":
-        return get_mock_industry_trend_data()
-    else:
-        return {"error": f"Unknown action: {action}"}
-
-
 # ==============================================================================
 # 监控与运维 API
 # ==============================================================================

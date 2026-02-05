@@ -4,7 +4,6 @@ import { ModuleManager } from "./ModuleManager";
 import { LayoutConfigManager } from "./LayoutConfigManager";
 import { DataSourceTaskManager } from "./DataSourceTaskManager";
 import { PeriodDataManager } from "./PeriodDataManager";
-import { MockDataSourceMonitor } from "./MockDataSourceMonitor";
 
 export function AdminCenterPage() {
   const [activeSection, setActiveSection] = useState<AdminSectionId>("modules");
@@ -18,7 +17,6 @@ export function AdminCenterPage() {
       {activeSection === "layout" && <LayoutConfigManager />}
       {activeSection === "tasks" && <DataSourceTaskManager />}
       {activeSection === "periodData" && <PeriodDataManager />}
-      {activeSection === "dataSource" && <MockDataSourceMonitor />}
     </AdminCenterLayout>
   );
 }

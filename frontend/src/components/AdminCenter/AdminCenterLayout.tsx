@@ -5,7 +5,6 @@ const ADMIN_SECTIONS = [
   { id: "layout", label: "布局配置" },
   { id: "tasks", label: "任务管理" },
   { id: "periodData", label: "周期数据" },
-  { id: "dataSource", label: "数据源监控" },
 ] as const;
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];
