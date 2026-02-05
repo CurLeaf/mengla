@@ -6,6 +6,21 @@ from typing import Any, Dict, List, Optional
 import json
 import logging
 import traceback
+import os
+from pathlib import Path
+
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+if _env_path.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path=_env_path)
+    except ImportError:
+        with open(_env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    os.environ.setdefault(key.strip(), value.strip())
 
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
@@ -13,9 +28,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-import os
-
-# 确保应用与 MengLa 调试日志在控制台可见（uvicorn 默认不配置根 logger）
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s %(name)s %(message)s",
@@ -37,7 +49,6 @@ from .utils.category import (
     get_all_valid_cat_ids,
     get_secondary_categories,
 )
-# 新增模块
 from .infra.cache import get_cache_manager, warmup_cache
 from .infra.metrics import get_metrics_collector, get_current_metrics
 from .infra.alerting import get_alert_manager, run_alert_check, init_default_notifiers

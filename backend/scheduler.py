@@ -44,11 +44,11 @@ def init_scheduler() -> AsyncIOScheduler:
     """
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_CONFIG["timezone"])
     
-    # 每日主采集：00:30 执行，day 颗粒度
+    # 每日主采集：02:00 执行，day 颗粒度
     scheduler.add_job(
         run_daily_collect,
         "cron",
-        hour=0, minute=30,
+        hour=2, minute=0,
         id="daily_collect",
         name="每日主采集",
     )
