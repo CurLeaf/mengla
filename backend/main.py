@@ -563,12 +563,12 @@ async def panel_list_tasks():
 
 
 @app.post("/panel/tasks/{task_id}/run", dependencies=[Depends(require_panel_admin)])
-async def panel_run_task(task_id: str, tasks: BackgroundTasks):
+async def panel_run_task(task_id: str):
     """Trigger a panel task by id. Runs in background."""
     if task_id not in PANEL_TASKS:
         raise HTTPException(status_code=404, detail=f"unknown task_id: {task_id}")
     run_fn = PANEL_TASKS[task_id]["run"]
-    tasks.add_task(run_fn)
+    asyncio.create_task(run_fn())
     return {"message": "task started", "task_id": task_id}
 
 
