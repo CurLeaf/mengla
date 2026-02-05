@@ -1,31 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-
-interface PanelTask {
-  id: string;
-  name: string;
-  description: string;
-}
-
-async function fetchPanelTasks(): Promise<PanelTask[]> {
-  const resp = await fetch(`${API_BASE}/panel/tasks`);
-  if (!resp.ok) {
-    throw new Error(`Failed to load panel tasks: ${resp.status}`);
-  }
-  return resp.json();
-}
-
-async function runPanelTask(taskId: string): Promise<{ message: string; task_id: string }> {
-  const resp = await fetch(`${API_BASE}/panel/tasks/${taskId}/run`, {
-    method: "POST",
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Failed to run task: ${resp.status} ${text}`);
-  }
-  return resp.json();
-}
+import { fetchPanelTasks, runPanelTask } from "../../services/mengla-admin-api";
 
 export function DataSourceTaskManager() {
   const queryClient = useQueryClient();

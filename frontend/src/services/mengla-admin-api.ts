@@ -60,3 +60,45 @@ export async function submitPanelDataFill(
   }
   return resp.json();
 }
+
+// ============================================================================
+// Panel Tasks API
+// ============================================================================
+
+export interface PanelTask {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface TaskStartedResponse {
+  message: string;
+  task_id: string;
+}
+
+/**
+ * 获取任务列表
+ * GET /panel/tasks
+ */
+export async function fetchPanelTasks(): Promise<PanelTask[]> {
+  const resp = await fetch(`${API_BASE}/panel/tasks`);
+  if (!resp.ok) {
+    throw new Error(`Failed to load panel tasks: ${resp.status}`);
+  }
+  return resp.json();
+}
+
+/**
+ * 执行任务
+ * POST /panel/tasks/{task_id}/run
+ */
+export async function runPanelTask(taskId: string): Promise<TaskStartedResponse> {
+  const resp = await fetch(`${API_BASE}/panel/tasks/${taskId}/run`, {
+    method: "POST",
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Failed to run task: ${resp.status} ${text}`);
+  }
+  return resp.json();
+}

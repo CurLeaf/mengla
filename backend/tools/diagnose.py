@@ -366,7 +366,7 @@ async def check_collect_service(verbose: bool = True) -> dict:
         results["error"] = str(e)
         if verbose:
             print(f"✗ 采集服务连接失败: {e}")
-            print("  提示: 检查网络、VPN 或使用模拟数据源")
+            print("  提示: 检查网络、VPN 或采集服务配置")
     
     results["_all_ok"] = results["connected"] and results["task_found"]
     return results
@@ -431,7 +431,6 @@ async def run_full_diagnose() -> dict:
         print("  1. 启动 Redis: redis-server")
         print("  2. 启动 MongoDB: mongod")
         print("  3. 启动 FastAPI: uvicorn backend.main:app --reload")
-        print("  4. 使用模拟数据源: python -m uvicorn backend.mock_data_source:app --port 3001")
     
     print("=" * 80)
     
