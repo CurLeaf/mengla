@@ -13,7 +13,6 @@ import {
 import {
   getDefaultTrendRangeForPeriod,
   TrendPeriodRangeSelector,
-  trendRangeToDateRange,
 } from "./components/TrendPeriodRangeSelector";
 import { queryMengla } from "./services/mengla-api";
 import { fetchCategories } from "./services/category-api";
@@ -331,20 +330,51 @@ export default function App() {
     }
   };
 
+  // 手动触发采集模式：
+  // - "current": 只采集当前视图
+  // - "fill": 补齐缺失数据（有缓存就跳过）
+  // - "force": 强制刷新所有数据（跳过缓存）
+  const [collectMode, setCollectMode] = useState<"current" | "fill" | "force">("current");
+  
   // 手动触发采集
   const triggerManualCollect = async () => {
     setTriggerLoading(true);
     try {
-      const action = mode === "overview" ? "industryTrendRange" : mode;
-      const body = mode === "overview"
-        ? buildTrendQueryParams("industryTrendRange", primaryCatId, trendPeriod, trendRangeStart, trendRangeEnd)
-        : buildQueryParams(action, primaryCatId, period, timest);
+      const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
       
-      await queryMengla({ ...body, extra: { force_refresh: true } });
-      // 刷新当前查询
-      invalidateCurrent();
+      if (collectMode === "force") {
+        // 强制刷新：跳过所有缓存，从数据源重新采集
+        const resp = await fetch(`${API_BASE}/panel/tasks/mengla_granular_force/run`, {
+          method: "POST",
+        });
+        if (!resp.ok) {
+          throw new Error(`强制采集启动失败: ${resp.status}`);
+        }
+        queryClient.invalidateQueries({ queryKey: ["mengla"] });
+        alert("强制采集任务已启动！将跳过所有缓存直接从数据源采集，请在终端查看进度");
+      } else if (collectMode === "fill") {
+        // 补齐模式：只采集缺失的数据，有缓存就跳过
+        const resp = await fetch(`${API_BASE}/panel/tasks/mengla_granular/run`, {
+          method: "POST",
+        });
+        if (!resp.ok) {
+          throw new Error(`补齐采集启动失败: ${resp.status}`);
+        }
+        queryClient.invalidateQueries({ queryKey: ["mengla"] });
+        alert("补齐采集任务已启动！将只采集缺失的数据，已有缓存的会跳过");
+      } else {
+        // 当前模式：只采集当前视图
+        const action = mode === "overview" ? "industryTrendRange" : mode;
+        const body = mode === "overview"
+          ? buildTrendQueryParams("industryTrendRange", primaryCatId, trendPeriod, trendRangeStart, trendRangeEnd)
+          : buildQueryParams(action, primaryCatId, period, timest);
+        
+        await queryMengla({ ...body, extra: { force_refresh: true } });
+        invalidateCurrent();
+      }
     } catch (e) {
       console.error("手动触发采集失败", e);
+      alert(`采集失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setTriggerLoading(false);
     }
@@ -481,15 +511,34 @@ export default function App() {
                 行业智能面板
               </span>
               {view !== "admin" && (
-                <button
-                  type="button"
-                  onClick={() => triggerManualCollect()}
-                  disabled={triggerLoading}
-                  className="px-2 py-1 text-[10px] bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                  title="手动触发向数据源发送请求"
-                >
-                  {triggerLoading ? "采集中..." : "手动采集"}
-                </button>
+                <div className="flex items-center gap-1">
+                  <select
+                    value={collectMode}
+                    onChange={(e) => setCollectMode(e.target.value as "current" | "fill" | "force")}
+                    disabled={triggerLoading}
+                    className="px-1.5 py-1 text-[10px] bg-[#0F0F12] border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 focus:outline-none"
+                    title="选择采集范围"
+                  >
+                    <option value="current">当前</option>
+                    <option value="fill">补齐</option>
+                    <option value="force">全部</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => triggerManualCollect()}
+                    disabled={triggerLoading}
+                    className="px-2 py-1 text-[10px] bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title={
+                      collectMode === "force" 
+                        ? "强制刷新所有数据（跳过缓存）" 
+                        : collectMode === "fill"
+                          ? "只采集缺失的数据"
+                          : "采集当前视图数据"
+                    }
+                  >
+                    {triggerLoading ? "采集中..." : "采集"}
+                  </button>
+                </div>
               )}
             </div>
           </div>

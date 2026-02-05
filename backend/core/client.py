@@ -109,7 +109,8 @@ class MengLaService:
 
         if params.action == "industryTrendRange":
             pass
-        elif params.action == "industryViewV2" and granularity == "quarter":
+        elif granularity == "quarter":
+            # 季度统一使用 QUARTERLY_FOR_YEAR
             parameters["dateType"] = "QUARTERLY_FOR_YEAR"
         else:
             parameters["dateType"] = granularity.upper()

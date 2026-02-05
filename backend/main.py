@@ -184,6 +184,17 @@ class EnqueueFullCrawlRequest(BaseModel):
     catId: Optional[str] = None
 
 
+def _validate_date_type(date_type: str) -> None:
+    """校验 dateType 参数是否有效"""
+    if date_type:
+        valid = {"day", "month", "quarter", "year"}
+        if date_type.lower() not in valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"无效的 dateType: {date_type}，必须是 day/month/quarter/year 之一",
+            )
+
+
 async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> JSONResponse:
     """
     内部：按 action 执行萌拉查询，校验 catId，调用 query_mengla，统一异常处理。
@@ -208,6 +219,7 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
                 status_code=400,
                 detail=f"catId 必须在 backend/category.json 中：当前 catId={cat_id} 不在类目列表中",
             )
+    _validate_date_type(body.dateType or "")
     try:
         result = await query_mengla(
             action=action,
@@ -516,7 +528,7 @@ async def enqueue_full_crawl(body: EnqueueFullCrawlRequest):
         if cat_id not in valid_cat_ids:
             raise HTTPException(
                 status_code=400,
-                detail=f"catId must be from backend/category.json: {cat_id} not in list",
+                detail=f"catId 必须在 backend/category.json 中：当前 catId={cat_id} 不在类目列表中",
             )
 
     if database.mongo_db is None:
@@ -648,6 +660,7 @@ async def mengla_query(body: MengLaQueryBody):
                 status_code=400,
                 detail=f"catId 必须在 backend/category.json 中：当前 catId={cat_id} 不在类目列表中",
             )
+    _validate_date_type(body.dateType or "")
     try:
         result = await query_mengla(
             action=body.action,

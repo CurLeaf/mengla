@@ -248,10 +248,14 @@ async def _fetch_mengla_data(
     endRange: str = "",
     extra: Optional[Dict[str, Any]] = None,
     timeout_seconds: Optional[int] = None,
+    skip_cache: bool = False,
 ) -> tuple[Any, str]:
     """
     内部采集函数：直接查询 MongoDB/Redis 或调用外部采集服务
     返回 (data, source)，source 为 "mongo" | "redis" | "fresh"
+    
+    Args:
+        skip_cache: 如果为 True，跳过 MongoDB/Redis 缓存检查，直接调用外部采集服务
     """
     # 确保 Mongo 已初始化
     if database.mongo_db is None:
@@ -309,115 +313,122 @@ async def _fetch_mengla_data(
     redis_param_key = build_redis_data_key(action, cat_id, granularity, period_key or "")
 
     # 3. 优先从 MongoDB 查（趋势：范围内各 period_key 查齐后合并返回；其他：单条）
-    if is_trend:
-        if not period_keys_list:
-            mongo_query = None
-            existing_docs = []
+    # 如果 skip_cache=True，跳过缓存检查，直接走采集
+    existing = None
+    if not skip_cache:
+        if is_trend:
+            if not period_keys_list:
+                mongo_query = None
+                existing_docs = []
+            else:
+                mongo_query = {
+                    "action": action,
+                    "cat_id": cat_id,
+                    "granularity": granularity,
+                    "period_key": {"$in": period_keys_list},
+                }
+                cursor = collection.find(mongo_query)
+                existing_docs = await cursor.to_list(length=len(period_keys_list) + 100)
+            by_key = {d["period_key"]: d for d in existing_docs}
+            # 全量命中：范围内每个 period_key 都有文档，直接合并返回
+            if period_keys_list and all(pk in by_key for pk in period_keys_list):
+                points = []
+                for pk in period_keys_list:
+                    doc = by_key[pk]
+                    data = doc.get("data")
+                    if not data:
+                        break
+                    unwrapped = _unwrap_result_data(data)
+                    if isinstance(unwrapped, dict):
+                        trend = unwrapped.get("industryTrendRange")
+                        if isinstance(trend, list):
+                            points.extend(trend)
+                        elif isinstance(trend, dict) and isinstance(trend.get("data"), list):
+                            points.extend(trend["data"])
+                    elif isinstance(unwrapped, list):
+                        points.extend(unwrapped)
+                if len(points) >= len(period_keys_list):
+                    points.sort(key=lambda p: (p.get("timest") or "") if isinstance(p, dict) else "")
+                    merged = {"industryTrendRange": {"data": points}}
+                    logger.info(
+                        "MengLa Mongo hit (trend): action=%s cat_id=%s granularity=%s keys=%s",
+                        action, cat_id, granularity, len(period_keys_list),
+                    )
+                    return (merged, "l3")
+            # 部分命中：Mongo 中只有范围内部分日期的数据，也合并返回，避免走采集超时
+            if period_keys_list and by_key:
+                points = []
+                for pk in period_keys_list:
+                    if pk not in by_key:
+                        continue
+                    doc = by_key[pk]
+                    data = doc.get("data")
+                    if not data:
+                        continue
+                    unwrapped = _unwrap_result_data(data)
+                    if isinstance(unwrapped, dict):
+                        trend = unwrapped.get("industryTrendRange")
+                        if isinstance(trend, list):
+                            points.extend(trend)
+                        elif isinstance(trend, dict) and isinstance(trend.get("data"), list):
+                            points.extend(trend["data"])
+                    elif isinstance(unwrapped, list):
+                        points.extend(unwrapped)
+                if points:
+                    points.sort(key=lambda p: (p.get("timest") or "") if isinstance(p, dict) else "")
+                    merged = {"industryTrendRange": {"data": points}}
+                    logger.info(
+                        "MengLa Mongo partial (trend): action=%s requested=%s found=%s",
+                        action, len(period_keys_list), len(by_key),
+                    )
+                    return (merged, "l3", {"partial": True, "requested": len(period_keys_list), "found": len(by_key)})
         else:
             mongo_query = {
                 "action": action,
                 "cat_id": cat_id,
                 "granularity": granularity,
-                "period_key": {"$in": period_keys_list},
+                "period_key": period_key,
             }
-            cursor = collection.find(mongo_query)
-            existing_docs = await cursor.to_list(length=len(period_keys_list) + 100)
-        by_key = {d["period_key"]: d for d in existing_docs}
-        # 全量命中：范围内每个 period_key 都有文档，直接合并返回
-        if period_keys_list and all(pk in by_key for pk in period_keys_list):
-            points = []
-            for pk in period_keys_list:
-                doc = by_key[pk]
-                data = doc.get("data")
-                if not data:
-                    break
-                unwrapped = _unwrap_result_data(data)
-                if isinstance(unwrapped, dict):
-                    trend = unwrapped.get("industryTrendRange")
-                    if isinstance(trend, list):
-                        points.extend(trend)
-                    elif isinstance(trend, dict) and isinstance(trend.get("data"), list):
-                        points.extend(trend["data"])
-                elif isinstance(unwrapped, list):
-                    points.extend(unwrapped)
-            if len(points) >= len(period_keys_list):
-                points.sort(key=lambda p: (p.get("timest") or "") if isinstance(p, dict) else "")
-                merged = {"industryTrendRange": {"data": points}}
-                logger.info(
-                    "MengLa Mongo hit (trend): action=%s cat_id=%s granularity=%s keys=%s",
-                    action, cat_id, granularity, len(period_keys_list),
-                )
-                return (merged, "mongo")
-        # 部分命中：Mongo 中只有范围内部分日期的数据，也合并返回，避免走采集超时
-        if period_keys_list and by_key:
-            points = []
-            for pk in period_keys_list:
-                if pk not in by_key:
-                    continue
-                doc = by_key[pk]
-                data = doc.get("data")
-                if not data:
-                    continue
-                unwrapped = _unwrap_result_data(data)
-                if isinstance(unwrapped, dict):
-                    trend = unwrapped.get("industryTrendRange")
-                    if isinstance(trend, list):
-                        points.extend(trend)
-                    elif isinstance(trend, dict) and isinstance(trend.get("data"), list):
-                        points.extend(trend["data"])
-                elif isinstance(unwrapped, list):
-                    points.extend(unwrapped)
-            if points:
-                points.sort(key=lambda p: (p.get("timest") or "") if isinstance(p, dict) else "")
-                merged = {"industryTrendRange": {"data": points}}
-                logger.info(
-                    "MengLa Mongo partial (trend): action=%s requested=%s found=%s",
-                    action, len(period_keys_list), len(by_key),
-                )
-                return (merged, "mongo", {"partial": True, "requested": len(period_keys_list), "found": len(by_key)})
-        existing = None
-    else:
-        mongo_query = {
-            "action": action,
-            "cat_id": cat_id,
-            "granularity": granularity,
-            "period_key": period_key,
-        }
-        await _dedupe_by_query(collection, mongo_query, COLLECTION_NAME)
-        existing = await collection.find_one(mongo_query)
-        if existing is not None:
-            data = existing.get("data")
-            if action in ("high", "hot", "chance") and _cached_list_empty(data, action):
-                existing = None
-                data = None
-            if existing is not None and data is not None:
-                logger.info(
-                    "MengLa Mongo hit: action=%s cat_id=%s granularity=%s period_key=%s",
-                    action, cat_id, granularity, period_key,
-                )
-                if database.redis_client is not None:
-                    ttl = get_cache_ttl(granularity)
-                    await database.redis_client.set(
-                        redis_param_key,
-                        json.dumps(data, ensure_ascii=False),
-                        ex=ttl,
+            await _dedupe_by_query(collection, mongo_query, COLLECTION_NAME)
+            existing = await collection.find_one(mongo_query)
+            if existing is not None:
+                data = existing.get("data")
+                if action in ("high", "hot", "chance") and _cached_list_empty(data, action):
+                    existing = None
+                    data = None
+                if existing is not None and data is not None:
+                    logger.info(
+                        "MengLa Mongo hit: action=%s cat_id=%s granularity=%s period_key=%s",
+                        action, cat_id, granularity, period_key,
                     )
-                return (_unwrap_result_data(data), "mongo")
+                    if database.redis_client is not None:
+                        ttl = get_cache_ttl(granularity)
+                        await database.redis_client.set(
+                            redis_param_key,
+                            json.dumps(data, ensure_ascii=False),
+                            ex=ttl,
+                        )
+                    return (_unwrap_result_data(data), "l3")
 
-    # 4. 其次从 Redis 查（仅非趋势单条）
-    if not is_trend and database.redis_client is not None:
-        cached = await database.redis_client.get(redis_param_key)
-        if cached is not None:
-            _parsed = json.loads(cached)
-            if action in ("high", "hot", "chance") and _cached_list_empty(_parsed, action):
-                cached = None
+        # 4. 其次从 Redis 查（仅非趋势单条）
+        if not is_trend and database.redis_client is not None:
+            cached = await database.redis_client.get(redis_param_key)
             if cached is not None:
-                logger.info(
-                    "MengLa Redis hit: action=%s cat_id=%s granularity=%s period_key=%s",
-                    action, cat_id, granularity, period_key,
-                )
-                _unwrapped = _unwrap_result_data(_parsed)
-                return (_unwrapped, "redis")
+                _parsed = json.loads(cached)
+                if action in ("high", "hot", "chance") and _cached_list_empty(_parsed, action):
+                    cached = None
+                if cached is not None:
+                    logger.info(
+                        "MengLa Redis hit: action=%s cat_id=%s granularity=%s period_key=%s",
+                        action, cat_id, granularity, period_key,
+                    )
+                    _unwrapped = _unwrap_result_data(_parsed)
+                    return (_unwrapped, "l2")
+    else:
+        logger.info(
+            "MengLa skip cache (force): action=%s cat_id=%s granularity=%s",
+            action, cat_id, granularity,
+        )
 
     # 5. 从采集服务拉取并落库（增加 in-flight 去重，防止同参并发多次打采集）
     service = get_mengla_service()
@@ -762,6 +773,7 @@ async def query_mengla(
         
         async def fetch_from_service():
             # 调用内部采集函数
+            # 如果 use_cache=False，则跳过 MongoDB/Redis 缓存检查
             data, source = await _fetch_mengla_data(
                 action=action,
                 product_id=_product_id,
@@ -772,6 +784,7 @@ async def query_mengla(
                 endRange=_end_range,
                 extra=extra,
                 timeout_seconds=timeout_seconds,
+                skip_cache=not use_cache,
             )
             return data, source
         

@@ -451,13 +451,17 @@ async def run_mengla_jobs(target_date: Optional[datetime] = None) -> None:
                 )
 
 
-async def run_mengla_granular_jobs(target_date: Optional[datetime] = None) -> None:
+async def run_mengla_granular_jobs(target_date: Optional[datetime] = None, force_refresh: bool = False) -> None:
     """
     每天凌晨针对 MengLa 的 high / hot / chance / view / trend 五个接口，
     按日 / 月 / 季 / 年四种颗粒度进行补齐：
     - 非趋势接口：按当天对应的 day/month/quarter/year period_key 各触发一次查询。
     - 趋势接口：对近一年的 day/month/quarter/year 范围各触发一次查询。
     所有查询统一复用 query_mengla（先 Mongo / 再 Redis / 后采集）。
+    
+    Args:
+        target_date: 目标日期，默认当前日期
+        force_refresh: 是否强制刷新（跳过缓存）
     """
     now = target_date or datetime.now()
     periods = make_period_keys(now)
@@ -477,6 +481,7 @@ async def run_mengla_granular_jobs(target_date: Optional[datetime] = None) -> No
                     starRange="",
                     endRange="",
                     extra=None,
+                    use_cache=not force_refresh,
                 )
                 await asyncio.sleep(random.uniform(3, 9))
 
@@ -495,8 +500,14 @@ async def run_mengla_granular_jobs(target_date: Optional[datetime] = None) -> No
                 starRange=start_year,
                 endRange=end_year,
                 extra=None,
+                use_cache=not force_refresh,
             )
             await asyncio.sleep(random.uniform(3, 9))
+
+
+async def run_mengla_granular_jobs_force() -> None:
+    """强制刷新所有数据（跳过缓存）"""
+    await run_mengla_granular_jobs(force_refresh=True)
 
 
 async def run_crawl_queue_once(max_batch: int = 1) -> None:
@@ -560,8 +571,13 @@ async def run_crawl_queue_once(max_batch: int = 1) -> None:
 PANEL_TASKS: Dict[str, dict] = {
     "mengla_granular": {
         "name": "MengLa 日/月/季/年补齐",
-        "description": "对 high/hot/chance/industryViewV2/industryTrendRange 按当日颗粒度补齐",
+        "description": "对 high/hot/chance/industryViewV2/industryTrendRange 按当日颗粒度补齐（有缓存时跳过）",
         "run": run_mengla_granular_jobs,
+    },
+    "mengla_granular_force": {
+        "name": "MengLa 强制全量采集",
+        "description": "强制刷新所有接口数据（跳过缓存，直接从数据源采集）",
+        "run": run_mengla_granular_jobs_force,
     },
     "mengla_single_day": {
         "name": "MengLa 单日补齐",
