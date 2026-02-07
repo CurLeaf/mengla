@@ -104,3 +104,66 @@ export async function runPanelTask(taskId: string): Promise<TaskStartedResponse>
   }
   return resp.json();
 }
+
+// ============================================================================
+// Scheduler Control API
+// ============================================================================
+
+export interface SchedulerStatus {
+  running: boolean;
+  state: "stopped" | "running" | "paused" | "unknown";
+  total_jobs: number;
+  active_jobs: { id: string; name: string; next_run: string }[];
+  paused_jobs: { id: string; name: string; next_run: string }[];
+  background_tasks: number;
+}
+
+/** 获取调度器状态 */
+export async function fetchSchedulerStatus(): Promise<SchedulerStatus> {
+  const resp = await authFetch(`${API_BASE}/admin/scheduler/status`);
+  if (!resp.ok) throw new Error(`Failed to get scheduler status: ${resp.status}`);
+  return resp.json();
+}
+
+/** 暂停调度器 */
+export async function pauseScheduler(): Promise<{ message: string }> {
+  const resp = await authFetch(`${API_BASE}/admin/scheduler/pause`, { method: "POST" });
+  if (!resp.ok) throw new Error(`Failed to pause scheduler: ${resp.status}`);
+  return resp.json();
+}
+
+/** 恢复调度器 */
+export async function resumeScheduler(): Promise<{ message: string }> {
+  const resp = await authFetch(`${API_BASE}/admin/scheduler/resume`, { method: "POST" });
+  if (!resp.ok) throw new Error(`Failed to resume scheduler: ${resp.status}`);
+  return resp.json();
+}
+
+/** 取消所有后台任务 */
+export async function cancelAllTasks(): Promise<{
+  message: string;
+  cancelled_asyncio_tasks: number;
+  cancelled_sync_logs: number;
+  cancelled_crawl_jobs: number;
+  cancelled_crawl_subtasks: number;
+}> {
+  const resp = await authFetch(`${API_BASE}/admin/tasks/cancel-all`, { method: "POST" });
+  if (!resp.ok) throw new Error(`Failed to cancel tasks: ${resp.status}`);
+  return resp.json();
+}
+
+/** 清空所有采集数据和缓存 */
+export async function purgeAllData(
+  targets: string[] = ["mongodb", "redis", "l1"]
+): Promise<{ message: string; results: Record<string, unknown> }> {
+  const resp = await authFetch(`${API_BASE}/admin/data/purge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirm: true, targets }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Failed to purge data: ${resp.status} ${text}`);
+  }
+  return resp.json();
+}

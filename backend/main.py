@@ -1033,3 +1033,172 @@ async def get_system_status():
         },
     }
 
+
+# ==============================================================================
+# 调度器控制 API — 暂停 / 恢复 / 状态
+# ==============================================================================
+
+@app.get("/admin/scheduler/status", dependencies=[Depends(require_panel_admin)])
+async def scheduler_status():
+    """获取调度器运行状态"""
+    from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING, STATE_STOPPED
+    state_map = {STATE_STOPPED: "stopped", STATE_RUNNING: "running", STATE_PAUSED: "paused"}
+    paused_jobs = []
+    active_jobs = []
+    for job in scheduler.get_jobs():
+        info = {"id": job.id, "name": job.name, "next_run": str(job.next_run_time)}
+        if job.next_run_time is None:
+            paused_jobs.append(info)
+        else:
+            active_jobs.append(info)
+    return {
+        "running": scheduler.running,
+        "state": state_map.get(scheduler.state, "unknown"),
+        "total_jobs": len(scheduler.get_jobs()),
+        "active_jobs": active_jobs,
+        "paused_jobs": paused_jobs,
+        "background_tasks": len(_background_tasks),
+    }
+
+
+@app.post("/admin/scheduler/pause", dependencies=[Depends(require_panel_admin)])
+async def scheduler_pause():
+    """暂停调度器：暂停所有定时任务（不影响已在运行的后台任务）"""
+    if not scheduler.running:
+        return {"message": "scheduler is not running", "paused": False}
+    scheduler.pause()
+    logger.info("Scheduler paused via admin API")
+    return {"message": "scheduler paused", "paused": True}
+
+
+@app.post("/admin/scheduler/resume", dependencies=[Depends(require_panel_admin)])
+async def scheduler_resume():
+    """恢复调度器：恢复所有定时任务"""
+    if not scheduler.running:
+        return {"message": "scheduler is not running", "resumed": False}
+    scheduler.resume()
+    logger.info("Scheduler resumed via admin API")
+    return {"message": "scheduler resumed", "resumed": True}
+
+
+@app.post("/admin/tasks/cancel-all", dependencies=[Depends(require_panel_admin)])
+async def cancel_all_background_tasks():
+    """
+    取消所有运行中的后台采集任务。
+    - 取消 asyncio 后台任务
+    - 将 MongoDB 中 RUNNING 状态的 sync_task_logs 标记为 FAILED
+    - 将 MongoDB 中 RUNNING/PENDING 状态的 crawl_jobs 标记为 CANCELLED
+    """
+    # 1) 取消 asyncio 后台任务
+    cancelled_count = 0
+    for task in list(_background_tasks):
+        if not task.done():
+            task.cancel()
+            cancelled_count += 1
+    _background_tasks.clear()
+
+    # 2) 标记 sync_task_logs 中运行中的任务为 FAILED
+    sync_updated = 0
+    if database.mongo_db is not None:
+        result = await database.mongo_db["sync_task_logs"].update_many(
+            {"status": "RUNNING"},
+            {"$set": {
+                "status": "FAILED",
+                "error_message": "Cancelled by admin",
+                "finished_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }},
+        )
+        sync_updated = result.modified_count
+
+    # 3) 标记 crawl_jobs 中运行中/待执行的任务为 CANCELLED
+    crawl_updated = 0
+    crawl_sub_updated = 0
+    if database.mongo_db is not None:
+        result = await database.mongo_db["crawl_jobs"].update_many(
+            {"status": {"$in": ["RUNNING", "PENDING"]}},
+            {"$set": {"status": "CANCELLED", "updated_at": datetime.utcnow()}},
+        )
+        crawl_updated = result.modified_count
+        result = await database.mongo_db["crawl_subtasks"].update_many(
+            {"status": {"$in": ["RUNNING", "PENDING"]}},
+            {"$set": {"status": "FAILED", "updated_at": datetime.utcnow()}},
+        )
+        crawl_sub_updated = result.modified_count
+
+    logger.info(
+        "Admin cancel-all: asyncio=%d sync_logs=%d crawl_jobs=%d crawl_subs=%d",
+        cancelled_count, sync_updated, crawl_updated, crawl_sub_updated,
+    )
+    return {
+        "message": "All tasks cancelled",
+        "cancelled_asyncio_tasks": cancelled_count,
+        "cancelled_sync_logs": sync_updated,
+        "cancelled_crawl_jobs": crawl_updated,
+        "cancelled_crawl_subtasks": crawl_sub_updated,
+    }
+
+
+# ==============================================================================
+# 数据清空 API — 清空 MongoDB 采集数据 + Redis 缓存 + L1 缓存
+# ==============================================================================
+
+class PurgeRequest(BaseModel):
+    confirm: bool = False
+    targets: List[str] = ["mongodb", "redis", "l1"]
+
+
+@app.post("/admin/data/purge", dependencies=[Depends(require_panel_admin)])
+async def purge_all_data(body: PurgeRequest):
+    """
+    清空采集数据和缓存。实质化操作到 MongoDB 和 Redis。
+    需要 confirm=true 确认。
+
+    targets 可选: "mongodb" (清空集合), "redis" (清除 mengla:* 缓存), "l1" (清空内存缓存)
+    """
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="请传入 confirm=true 确认清空操作")
+
+    results: Dict[str, Any] = {}
+
+    # 1) 清空 MongoDB 采集数据
+    if "mongodb" in body.targets and database.mongo_db is not None:
+        mongo_stats: Dict[str, int] = {}
+        for coll_name in ["mengla_data", "crawl_jobs", "crawl_subtasks", "sync_task_logs"]:
+            try:
+                r = await database.mongo_db[coll_name].delete_many({})
+                mongo_stats[coll_name] = r.deleted_count
+            except Exception as e:
+                mongo_stats[coll_name] = -1
+                logger.warning("Failed to purge collection %s: %s", coll_name, e)
+        results["mongodb"] = mongo_stats
+
+    # 2) 清空 Redis 中 mengla:* 前缀的所有 key
+    if "redis" in body.targets and database.redis_client is not None:
+        redis_deleted = 0
+        try:
+            cursor_val = "0"
+            while True:
+                cursor_val, keys = await database.redis_client.scan(
+                    cursor=int(cursor_val), match="mengla:*", count=500,
+                )
+                if keys:
+                    await database.redis_client.delete(*keys)
+                    redis_deleted += len(keys)
+                if cursor_val == 0 or str(cursor_val) == "0":
+                    break
+        except Exception as e:
+            logger.warning("Failed to purge Redis keys: %s", e)
+            results["redis"] = {"error": str(e)}
+        else:
+            results["redis"] = {"deleted_keys": redis_deleted}
+
+    # 3) 清空 L1 内存缓存
+    if "l1" in body.targets:
+        cache_manager = get_cache_manager()
+        await cache_manager.clear_l1()
+        results["l1"] = {"cleared": True}
+
+    logger.info("Admin purge completed: targets=%s results=%s", body.targets, results)
+    return {"message": "Purge completed", "results": results}
+
