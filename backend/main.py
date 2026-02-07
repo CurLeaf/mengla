@@ -44,6 +44,10 @@ from .core.domain import VALID_ACTIONS, query_mengla
 from .utils.period import period_keys_in_range
 from .utils.dashboard import get_panel_config, update_panel_config
 from .core.queue import create_crawl_job
+from .core.sync_task_log import (
+    get_today_sync_tasks,
+    get_sync_task_detail,
+)
 from .utils.category import (
     get_all_categories,
     get_all_valid_cat_ids,
@@ -582,6 +586,26 @@ async def panel_run_task(task_id: str):
     run_fn = PANEL_TASKS[task_id]["run"]
     asyncio.create_task(run_fn())
     return {"message": "task started", "task_id": task_id}
+
+
+# ==============================================================================
+# Sync Task Logs API - 同步任务日志
+# ==============================================================================
+
+@app.get("/api/sync-tasks/today", dependencies=[Depends(require_panel_admin)])
+async def get_today_sync_tasks_api():
+    """获取当天的同步任务列表。"""
+    tasks = await get_today_sync_tasks()
+    return {"tasks": tasks}
+
+
+@app.get("/api/sync-tasks/{log_id}", dependencies=[Depends(require_panel_admin)])
+async def get_sync_task_detail_api(log_id: str):
+    """获取单个同步任务的详情。"""
+    task = await get_sync_task_detail(log_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"sync task not found: {log_id}")
+    return task
 
 
 @app.get("/api/webhook/mengla-notify")

@@ -3,6 +3,7 @@ import { AdminCenterLayout, type AdminSectionId } from "./AdminCenterLayout";
 import { ModuleManager } from "./ModuleManager";
 import { LayoutConfigManager } from "./LayoutConfigManager";
 import { DataSourceTaskManager } from "./DataSourceTaskManager";
+import { SyncTaskLogViewer } from "./SyncTaskLogViewer";
 import { PeriodDataManager } from "./PeriodDataManager";
 
 export function AdminCenterPage() {
@@ -16,6 +17,7 @@ export function AdminCenterPage() {
       {activeSection === "modules" && <ModuleManager />}
       {activeSection === "layout" && <LayoutConfigManager />}
       {activeSection === "tasks" && <DataSourceTaskManager />}
+      {activeSection === "syncLogs" && <SyncTaskLogViewer />}
       {activeSection === "periodData" && <PeriodDataManager />}
     </AdminCenterLayout>
   );

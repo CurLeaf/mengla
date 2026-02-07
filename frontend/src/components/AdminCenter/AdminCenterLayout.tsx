@@ -4,6 +4,7 @@ const ADMIN_SECTIONS = [
   { id: "modules", label: "模块管理" },
   { id: "layout", label: "布局配置" },
   { id: "tasks", label: "任务管理" },
+  { id: "syncLogs", label: "同步日志" },
   { id: "periodData", label: "周期数据" },
 ] as const;
 
