@@ -4,12 +4,15 @@ Sync Task Log: 记录同步任务的执行状态和进度。
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from bson import ObjectId
 
 from ..infra import database
+
+logger = logging.getLogger("mengla-backend")
 
 # Collection name
 SYNC_TASK_LOGS = "sync_task_logs"
@@ -18,10 +21,35 @@ SYNC_TASK_LOGS = "sync_task_logs"
 STATUS_RUNNING = "RUNNING"
 STATUS_COMPLETED = "COMPLETED"
 STATUS_FAILED = "FAILED"
+STATUS_CANCELLED = "CANCELLED"
 
 # Trigger types
 TRIGGER_MANUAL = "manual"
 TRIGGER_SCHEDULED = "scheduled"
+
+# ---------------------------------------------------------------------------
+# 协作式取消机制
+# 运行中的任务会在每次循环迭代时检查此集合，如果发现自己的 log_id 在其中，
+# 则主动停止执行。
+# ---------------------------------------------------------------------------
+_cancelled_logs: Set[str] = set()
+
+
+def is_cancelled(log_id: Optional[str]) -> bool:
+    """检查指定的任务日志是否已被取消。"""
+    if not log_id:
+        return False
+    return log_id in _cancelled_logs
+
+
+def _mark_cancelled(log_id: str) -> None:
+    """将 log_id 加入取消集合。"""
+    _cancelled_logs.add(log_id)
+
+
+def _unmark_cancelled(log_id: str) -> None:
+    """将 log_id 从取消集合中移除（清理）。"""
+    _cancelled_logs.discard(log_id)
 
 
 async def create_sync_task_log(
@@ -216,3 +244,126 @@ async def get_running_task_by_task_id(task_id: str) -> Optional[Dict[str, Any]]:
         return task
     
     return None
+
+
+# ---------------------------------------------------------------------------
+# 取消任务
+# ---------------------------------------------------------------------------
+async def cancel_sync_task(log_id: str) -> Dict[str, Any]:
+    """
+    取消一个运行中的同步任务。
+    
+    1. 将 log_id 加入协作取消集合（运行中的任务会在下次迭代时自行停止）
+    2. 在数据库中将状态标记为 CANCELLED
+    
+    Args:
+        log_id: 日志记录 ID
+    
+    Returns:
+        操作结果
+    """
+    if database.mongo_db is None:
+        return {"success": False, "message": "数据库不可用"}
+
+    try:
+        oid = ObjectId(log_id)
+    except Exception:
+        return {"success": False, "message": f"无效的 log_id: {log_id}"}
+
+    # 检查任务是否存在且正在运行
+    task = await database.mongo_db[SYNC_TASK_LOGS].find_one({"_id": oid})
+    if task is None:
+        return {"success": False, "message": "任务不存在"}
+
+    if task["status"] != STATUS_RUNNING:
+        return {"success": False, "message": f"任务不在运行中（当前状态: {task['status']}）"}
+
+    # 1. 通知协作取消机制
+    _mark_cancelled(log_id)
+
+    # 2. 更新数据库状态
+    now = datetime.utcnow()
+    await database.mongo_db[SYNC_TASK_LOGS].update_one(
+        {"_id": oid},
+        {"$set": {
+            "status": STATUS_CANCELLED,
+            "error_message": "用户手动取消",
+            "finished_at": now,
+            "updated_at": now,
+        }},
+    )
+
+    logger.info("Sync task cancelled: log_id=%s task_id=%s", log_id, task.get("task_id"))
+    return {"success": True, "message": "任务已取消"}
+
+
+# ---------------------------------------------------------------------------
+# 删除任务（可选：同时删除采集数据）
+# ---------------------------------------------------------------------------
+async def delete_sync_task(log_id: str, delete_data: bool = False) -> Dict[str, Any]:
+    """
+    删除一个同步任务日志记录。
+    
+    如果 delete_data=True，还会删除该任务时间窗口内写入的采集数据。
+    注意：运行中的任务不能删除，需先取消。
+    
+    Args:
+        log_id: 日志记录 ID
+        delete_data: 是否同时删除该任务采集的数据
+    
+    Returns:
+        操作结果（含删除的数据条数）
+    """
+    if database.mongo_db is None:
+        return {"success": False, "message": "数据库不可用"}
+
+    try:
+        oid = ObjectId(log_id)
+    except Exception:
+        return {"success": False, "message": f"无效的 log_id: {log_id}"}
+
+    task = await database.mongo_db[SYNC_TASK_LOGS].find_one({"_id": oid})
+    if task is None:
+        return {"success": False, "message": "任务不存在"}
+
+    if task["status"] == STATUS_RUNNING:
+        return {"success": False, "message": "运行中的任务不能删除，请先取消"}
+
+    deleted_data_count = 0
+
+    # 删除该任务时间窗口内的采集数据
+    if delete_data:
+        from ..utils.config import COLLECTION_NAME
+
+        started_at = task.get("started_at")
+        finished_at = task.get("finished_at") or task.get("updated_at")
+
+        if started_at and finished_at:
+            data_filter = {
+                "updated_at": {
+                    "$gte": started_at,
+                    "$lte": finished_at,
+                },
+            }
+            result = await database.mongo_db[COLLECTION_NAME].delete_many(data_filter)
+            deleted_data_count = result.deleted_count
+            logger.info(
+                "Deleted %d data records for sync task %s (time range: %s ~ %s)",
+                deleted_data_count, log_id, started_at, finished_at,
+            )
+
+    # 删除日志记录本身
+    await database.mongo_db[SYNC_TASK_LOGS].delete_one({"_id": oid})
+
+    # 清理取消标记（如果有）
+    _unmark_cancelled(log_id)
+
+    logger.info(
+        "Sync task deleted: log_id=%s delete_data=%s deleted_data_count=%d",
+        log_id, delete_data, deleted_data_count,
+    )
+    return {
+        "success": True,
+        "message": "任务已删除",
+        "deleted_data_count": deleted_data_count,
+    }

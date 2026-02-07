@@ -33,8 +33,11 @@ from .core.sync_task_log import (
     create_sync_task_log,
     update_sync_task_progress,
     finish_sync_task_log,
+    is_cancelled,
+    _unmark_cancelled,
     STATUS_COMPLETED,
     STATUS_FAILED,
+    STATUS_CANCELLED,
     TRIGGER_MANUAL,
     TRIGGER_SCHEDULED,
 )
@@ -442,10 +445,20 @@ async def run_mengla_granular_jobs(
             )
             return False
 
+    cancelled = False
     try:
         for cat_id in top_cat_ids:
+            if is_cancelled(log_id):
+                cancelled = True
+                break
             for action in ["high", "hot", "chance", "industryViewV2"]:
+                if is_cancelled(log_id):
+                    cancelled = True
+                    break
                 for gran in ["day", "month", "quarter", "year"]:
+                    if is_cancelled(log_id):
+                        cancelled = True
+                        break
                     period_key = periods[gran]
                     success = await query_with_retry(
                         action=action,
@@ -467,32 +480,53 @@ async def run_mengla_granular_jobs(
                         await update_sync_task_progress(log_id, failed_delta=1)
 
                     await asyncio.sleep(random.uniform(interval * 1.5, interval * 4.5))
+                if cancelled:
+                    break
+            if cancelled:
+                break
 
-        year_str = str(now.year)
-        start_year, end_year = period_to_date_range("year", year_str)
+        if not cancelled:
+            year_str = str(now.year)
+            start_year, end_year = period_to_date_range("year", year_str)
 
-        for cat_id in top_cat_ids:
-            for gran in ["day", "month", "quarter", "year"]:
-                success = await query_with_retry(
-                    action="industryTrendRange",
-                    product_id="",
-                    catId=cat_id,
-                    dateType=gran.upper(),
-                    timest="",
-                    starRange=start_year,
-                    endRange=end_year,
-                    extra=None,
-                    use_cache=not force_refresh,
-                )
+            for cat_id in top_cat_ids:
+                if is_cancelled(log_id):
+                    cancelled = True
+                    break
+                for gran in ["day", "month", "quarter", "year"]:
+                    if is_cancelled(log_id):
+                        cancelled = True
+                        break
+                    success = await query_with_retry(
+                        action="industryTrendRange",
+                        product_id="",
+                        catId=cat_id,
+                        dateType=gran.upper(),
+                        timest="",
+                        starRange=start_year,
+                        endRange=end_year,
+                        extra=None,
+                        use_cache=not force_refresh,
+                    )
 
-                if success:
-                    completed_count += 1
-                    await update_sync_task_progress(log_id, completed_delta=1)
-                else:
-                    failed_count += 1
-                    await update_sync_task_progress(log_id, failed_delta=1)
+                    if success:
+                        completed_count += 1
+                        await update_sync_task_progress(log_id, completed_delta=1)
+                    else:
+                        failed_count += 1
+                        await update_sync_task_progress(log_id, failed_delta=1)
 
-                await asyncio.sleep(random.uniform(interval * 1.5, interval * 4.5))
+                    await asyncio.sleep(random.uniform(interval * 1.5, interval * 4.5))
+                if cancelled:
+                    break
+
+        if cancelled:
+            logger.info(
+                "Granular jobs cancelled: date=%s completed=%d failed=%d",
+                now.date(), completed_count, failed_count,
+            )
+            _unmark_cancelled(log_id)
+            return
 
         final_status = STATUS_FAILED if failed_count > 0 else STATUS_COMPLETED
         await finish_sync_task_log(log_id, status=final_status)
@@ -503,6 +537,7 @@ async def run_mengla_granular_jobs(
         )
 
     except Exception as e:
+        _unmark_cancelled(log_id)
         await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=str(e))
         logger.error("Granular jobs failed with unexpected error: %s", e)
         raise
