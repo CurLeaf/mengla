@@ -1,7 +1,15 @@
+"""
+MengLa 定时任务调度器
+
+- run_period_collect(granularity): 统一采集入口（day/month/quarter/year）
+- run_backfill_check(): 补数检查
+- run_crawl_queue_once(): 队列消费者
+- run_mengla_granular_jobs(): 全量多颗粒度补齐
+"""
 import asyncio
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -11,16 +19,15 @@ from .utils.period import make_period_keys, period_to_date_range
 from .core.domain import query_mengla
 from .core.queue import (
     get_next_job,
-    get_pending_subtasks,
+    claim_subtasks,
     set_job_running,
-    set_subtask_running,
     set_subtask_success,
     set_subtask_failed,
     inc_job_stats,
     finish_job_if_done,
 )
 from .utils.category import get_top_level_cat_ids
-from .utils.config import SCHEDULER_CONFIG, CRON_JOBS, CONCURRENT_CONFIG
+from .utils.config import SCHEDULER_CONFIG, CRON_JOBS, CONCURRENT_CONFIG, get_collect_interval
 from .infra.resilience import retry_async, RetryError
 from .core.sync_task_log import (
     create_sync_task_log,
@@ -50,47 +57,50 @@ def _get_top_cat_ids_safe() -> List[str]:
 def init_scheduler() -> AsyncIOScheduler:
     """
     初始化 APScheduler，注册 MengLa 相关定时任务。
-    使用配置中心的设置。
+    使用统一的 run_period_collect 替代 4 个独立采集函数。
     """
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_CONFIG["timezone"])
-    
-    # Daily collect: 04:00, collect previous day data
+
+    # Daily collect: 04:00
     scheduler.add_job(
-        run_daily_collect,
+        run_period_collect,
         "cron",
         hour=4, minute=0,
+        args=["day"],
         id="daily_collect",
         name="Daily Collect",
     )
-    
-    # Monthly collect: 3rd day 05:00, collect previous month data
+
+    # Monthly collect: 3rd day 05:00
     scheduler.add_job(
-        run_monthly_collect,
+        run_period_collect,
         "cron",
         day=3, hour=5, minute=0,
+        args=["month"],
         id="monthly_collect",
         name="Monthly Collect",
     )
-    
+
     # Quarterly collect: 10th day after quarter end 06:00
-    # Q1->Apr 10, Q2->Jul 10, Q3->Oct 10, Q4->Jan 10
     scheduler.add_job(
-        run_quarterly_collect,
+        run_period_collect,
         "cron",
         month="1,4,7,10", day=10, hour=6, minute=0,
+        args=["quarter"],
         id="quarterly_collect",
         name="Quarterly Collect",
     )
-    
-    # Yearly collect: Jan 20 07:00, collect previous year data
+
+    # Yearly collect: Jan 20 07:00
     scheduler.add_job(
-        run_yearly_collect,
+        run_period_collect,
         "cron",
         month=1, day=20, hour=7, minute=0,
+        args=["year"],
         id="yearly_collect",
         name="Yearly Collect",
     )
-    
+
     # Backfill check: every 4 hours
     scheduler.add_job(
         run_backfill_check,
@@ -99,7 +109,7 @@ def init_scheduler() -> AsyncIOScheduler:
         id="backfill_check",
         name="Backfill Check",
     )
-    
+
     # Queue consumer: process pending crawl subtasks
     scheduler.add_job(
         run_crawl_queue_once,
@@ -109,7 +119,7 @@ def init_scheduler() -> AsyncIOScheduler:
         id="crawl_queue",
         name="Queue Consumer",
     )
-    
+
     logger.info("Scheduler initialized with %d jobs", len(scheduler.get_jobs()))
     return scheduler
 
@@ -129,331 +139,208 @@ TREND_ACTION = "industryTrendRange"
 
 
 # ==============================================================================
-# 新增定时任务函数
+# 统一采集入口（替代原来的 4 个独立函数）
 # ==============================================================================
-async def run_daily_collect(target_date: Optional[datetime] = None) -> Dict[str, Any]:
+async def run_period_collect(
+    granularity: str,
+    target_date: Optional[datetime] = None,
+) -> Dict[str, Any]:
     """
-    每日主采集：采集前一天的 day 颗粒度数据
+    统一采集入口，granularity = day | month | quarter | year。
+    根据颗粒度自动计算目标日期和 period_key，遍历所有类目进行采集。
+    失败后延迟重试一次。
     """
-    from datetime import timedelta
-    # 默认采集前一天的数据
-    target = target_date or (datetime.now() - timedelta(days=1))
+    # 计算目标日期
+    target = target_date or _compute_target_date(granularity)
     periods = make_period_keys(target)
     top_cat_ids = _get_top_cat_ids_safe()
-    
+
     stats = {"total": 0, "success": 0, "failed": 0}
-    period_key = periods["day"]
-    
-    logger.info("Starting daily collect for period_key=%s", period_key)
-    
+    period_key = periods[granularity]
+    interval = get_collect_interval()
+
+    logger.info("Starting %s collect for period_key=%s", granularity, period_key)
+
+    # 1) 非趋势接口
     for cat_id in top_cat_ids:
         for action in NON_TREND_ACTIONS:
             stats["total"] += 1
-            try:
-                await query_mengla(
-                    action=action,
-                    product_id="",
-                    catId=cat_id,
-                    dateType="day",
-                    timest=period_key,
-                    starRange="",
-                    endRange="",
-                    extra=None,
-                )
+            success = await _collect_with_retry(
+                action=action,
+                cat_id=cat_id,
+                date_type=granularity,
+                timest=period_key,
+                granularity=granularity,
+            )
+            if success:
                 stats["success"] += 1
-            except Exception as e:
+            else:
                 stats["failed"] += 1
-                logger.warning("Daily collect failed: action=%s cat_id=%s error=%s", action, cat_id, e)
-            await asyncio.sleep(random.uniform(1, 3))
-    
-    # 趋势接口：按年范围补齐 day 颗粒度
+            await asyncio.sleep(random.uniform(interval * 0.5, interval * 1.5))
+
+    # 2) 趋势接口：按年范围补齐
     year_str = str(target.year)
     start_year, end_year = period_to_date_range("year", year_str)
-    
+    date_type_map = {"day": "DAY", "month": "MONTH", "quarter": "QUARTERLY_FOR_YEAR", "year": "YEAR"}
+    trend_date_type = date_type_map.get(granularity, "DAY")
+
     for cat_id in top_cat_ids:
         stats["total"] += 1
-        try:
-            await query_mengla(
-                action=TREND_ACTION,
-                product_id="",
-                catId=cat_id,
-                dateType="DAY",
-                timest="",
-                starRange=start_year,
-                endRange=end_year,
-                extra=None,
-            )
+        success = await _collect_with_retry(
+            action=TREND_ACTION,
+            cat_id=cat_id,
+            date_type=trend_date_type,
+            timest="",
+            star_range=start_year,
+            end_range=end_year,
+            granularity=granularity,
+        )
+        if success:
             stats["success"] += 1
-        except Exception as e:
+        else:
             stats["failed"] += 1
-            logger.warning("Daily trend collect failed: cat_id=%s error=%s", cat_id, e)
-        await asyncio.sleep(random.uniform(1, 3))
-    
-    logger.info("Daily collect completed: %s", stats)
+        await asyncio.sleep(random.uniform(interval * 0.5, interval * 1.5))
+
+    logger.info("%s collect completed: %s", granularity.capitalize(), stats)
     return stats
 
 
-async def run_monthly_collect(target_date: Optional[datetime] = None) -> Dict[str, Any]:
-    """
-    月度采集：采集上一月的 month 颗粒度数据
-    """
-    from datetime import timedelta
-    # 默认采集上一月的数据（回退到上月任意一天）
+def _compute_target_date(granularity: str) -> datetime:
+    """根据颗粒度计算默认的采集目标日期"""
     today = datetime.now()
-    first_of_this_month = today.replace(day=1)
-    target = target_date or (first_of_this_month - timedelta(days=1))
-    periods = make_period_keys(target)
-    top_cat_ids = _get_top_cat_ids_safe()
-    
-    stats = {"total": 0, "success": 0, "failed": 0}
-    period_key = periods["month"]
-    
-    logger.info("Starting monthly collect for period_key=%s", period_key)
-    
-    for cat_id in top_cat_ids:
-        for action in NON_TREND_ACTIONS:
-            stats["total"] += 1
-            try:
-                await query_mengla(
-                    action=action,
-                    product_id="",
-                    catId=cat_id,
-                    dateType="month",
-                    timest=period_key,
-                    starRange="",
-                    endRange="",
-                    extra=None,
-                )
-                stats["success"] += 1
-            except Exception as e:
-                stats["failed"] += 1
-                logger.warning("Monthly collect failed: action=%s cat_id=%s error=%s", action, cat_id, e)
-            await asyncio.sleep(random.uniform(1, 3))
-    
-    # 趋势接口：按年范围补齐 month 颗粒度
-    year_str = str(target.year)
-    start_year, end_year = period_to_date_range("year", year_str)
-    
-    for cat_id in top_cat_ids:
-        stats["total"] += 1
-        try:
-            await query_mengla(
-                action=TREND_ACTION,
-                product_id="",
-                catId=cat_id,
-                dateType="MONTH",
-                timest="",
-                starRange=start_year,
-                endRange=end_year,
-                extra=None,
-            )
-            stats["success"] += 1
-        except Exception as e:
-            stats["failed"] += 1
-            logger.warning("Monthly trend collect failed: cat_id=%s error=%s", cat_id, e)
-        await asyncio.sleep(random.uniform(1, 3))
-    
-    logger.info("Monthly collect completed: %s", stats)
-    return stats
-
-
-async def run_quarterly_collect(target_date: Optional[datetime] = None) -> Dict[str, Any]:
-    """
-    季度采集：采集上一季度的 quarter 颗粒度数据
-    """
-    # 默认采集上一季度的数据
-    today = datetime.now()
-    # 计算当前季度，然后回退到上一季度
-    current_quarter = (today.month - 1) // 3 + 1
-    if current_quarter == 1:
-        # 当前Q1，上一季度是去年Q4
-        target = target_date or datetime(today.year - 1, 10, 1)
+    if granularity == "day":
+        return today - timedelta(days=1)
+    elif granularity == "month":
+        first_of_this_month = today.replace(day=1)
+        return first_of_this_month - timedelta(days=1)
+    elif granularity == "quarter":
+        current_quarter = (today.month - 1) // 3 + 1
+        if current_quarter == 1:
+            return datetime(today.year - 1, 10, 1)
+        else:
+            prev_quarter_month = (current_quarter - 2) * 3 + 1
+            return datetime(today.year, prev_quarter_month, 1)
+    elif granularity == "year":
+        return datetime(today.year - 1, 1, 1)
     else:
-        # 上一季度的首月
-        prev_quarter_month = (current_quarter - 2) * 3 + 1
-        target = target_date or datetime(today.year, prev_quarter_month, 1)
-    periods = make_period_keys(target)
-    top_cat_ids = _get_top_cat_ids_safe()
-    
-    stats = {"total": 0, "success": 0, "failed": 0}
-    period_key = periods["quarter"]
-    
-    logger.info("Starting quarterly collect for period_key=%s", period_key)
-    
-    for cat_id in top_cat_ids:
-        for action in NON_TREND_ACTIONS:
-            stats["total"] += 1
-            try:
-                await query_mengla(
-                    action=action,
-                    product_id="",
-                    catId=cat_id,
-                    dateType="quarter",
-                    timest=period_key,
-                    starRange="",
-                    endRange="",
-                    extra=None,
-                )
-                stats["success"] += 1
-            except Exception as e:
-                stats["failed"] += 1
-                logger.warning("Quarterly collect failed: action=%s cat_id=%s error=%s", action, cat_id, e)
-            await asyncio.sleep(random.uniform(1, 3))
-    
-    # 趋势接口：按年范围补齐 quarter 颗粒度
-    year_str = str(target.year)
-    start_year, end_year = period_to_date_range("year", year_str)
-    
-    for cat_id in top_cat_ids:
-        stats["total"] += 1
+        return today - timedelta(days=1)
+
+
+async def _collect_with_retry(
+    *,
+    action: str,
+    cat_id: str,
+    date_type: str,
+    timest: str = "",
+    star_range: str = "",
+    end_range: str = "",
+    granularity: str = "day",
+) -> bool:
+    """
+    执行一次采集，失败后延迟 5 秒重试一次。
+    返回 True 表示最终成功。
+    """
+    try:
+        await query_mengla(
+            action=action,
+            product_id="",
+            catId=cat_id,
+            dateType=date_type,
+            timest=timest,
+            starRange=star_range,
+            endRange=end_range,
+            extra=None,
+        )
+        return True
+    except Exception as e:
+        logger.warning(
+            "Collect failed (will retry): action=%s cat_id=%s gran=%s error=%s",
+            action, cat_id, granularity, e,
+        )
+        # 失败后延迟重试一次
+        await asyncio.sleep(5)
         try:
             await query_mengla(
-                action=TREND_ACTION,
+                action=action,
                 product_id="",
                 catId=cat_id,
-                dateType="QUARTERLY_FOR_YEAR",
-                timest="",
-                starRange=start_year,
-                endRange=end_year,
+                dateType=date_type,
+                timest=timest,
+                starRange=star_range,
+                endRange=end_range,
                 extra=None,
             )
-            stats["success"] += 1
-        except Exception as e:
-            stats["failed"] += 1
-            logger.warning("Quarterly trend collect failed: cat_id=%s error=%s", cat_id, e)
-        await asyncio.sleep(random.uniform(1, 3))
-    
-    logger.info("Quarterly collect completed: %s", stats)
-    return stats
-
-
-async def run_yearly_collect(target_date: Optional[datetime] = None) -> Dict[str, Any]:
-    """
-    年度采集：采集上一年的 year 颗粒度数据
-    """
-    # 默认采集上一年的数据
-    today = datetime.now()
-    target = target_date or datetime(today.year - 1, 1, 1)
-    periods = make_period_keys(target)
-    top_cat_ids = _get_top_cat_ids_safe()
-    
-    stats = {"total": 0, "success": 0, "failed": 0}
-    period_key = periods["year"]
-    
-    logger.info("Starting yearly collect for period_key=%s", period_key)
-    
-    for cat_id in top_cat_ids:
-        for action in NON_TREND_ACTIONS:
-            stats["total"] += 1
-            try:
-                await query_mengla(
-                    action=action,
-                    product_id="",
-                    catId=cat_id,
-                    dateType="year",
-                    timest=period_key,
-                    starRange="",
-                    endRange="",
-                    extra=None,
-                )
-                stats["success"] += 1
-            except Exception as e:
-                stats["failed"] += 1
-                logger.warning("Yearly collect failed: action=%s cat_id=%s error=%s", action, cat_id, e)
-            await asyncio.sleep(random.uniform(1, 3))
-    
-    # 趋势接口：按年范围补齐 year 颗粒度
-    year_str = str(target.year)
-    start_year, end_year = period_to_date_range("year", year_str)
-    
-    for cat_id in top_cat_ids:
-        stats["total"] += 1
-        try:
-            await query_mengla(
-                action=TREND_ACTION,
-                product_id="",
-                catId=cat_id,
-                dateType="YEAR",
-                timest="",
-                starRange=start_year,
-                endRange=end_year,
-                extra=None,
+            return True
+        except Exception as e2:
+            logger.error(
+                "Retry also failed, skip: action=%s cat_id=%s gran=%s error=%s",
+                action, cat_id, granularity, e2,
             )
-            stats["success"] += 1
-        except Exception as e:
-            stats["failed"] += 1
-            logger.warning("Yearly trend collect failed: cat_id=%s error=%s", cat_id, e)
-        await asyncio.sleep(random.uniform(1, 3))
-    
-    logger.info("Yearly collect completed: %s", stats)
-    return stats
+            return False
 
 
+# ==============================================================================
+# 补数检查
+# ==============================================================================
 async def run_backfill_check() -> Dict[str, Any]:
-    """
-    补数检查：检查最近数据是否有缺失，触发补采
-    """
-    from .infra.database import MENGLA_DATA_COLLECTION
+    """检查最近数据是否有缺失，触发补采"""
     from .utils.config import COLLECTION_NAME
-    
+
     if database.mongo_db is None:
         logger.warning("MongoDB not connected, skipping backfill check")
         return {"status": "skipped", "reason": "db_not_connected"}
-    
+
     now = datetime.now()
     periods = make_period_keys(now)
     top_cat_ids = _get_top_cat_ids_safe()
-    
+    interval = get_collect_interval()
+
     stats = {"checked": 0, "missing": 0, "backfilled": 0, "failed": 0}
-    
+
     logger.info("Starting backfill check")
-    
+
     collection = database.mongo_db[COLLECTION_NAME]
-    
-    # 检查最近的 day 和 month 数据
+
     for granularity in ["day", "month"]:
         period_key = periods[granularity]
-        
+
         for cat_id in top_cat_ids:
             for action in NON_TREND_ACTIONS:
                 stats["checked"] += 1
-                
-                # 检查数据是否存在
+
                 query = {
                     "action": action,
                     "cat_id": cat_id or "",
                     "granularity": granularity,
                     "period_key": period_key,
                 }
-                
+
                 try:
                     doc = await collection.find_one(query)
                     if doc is None:
                         stats["missing"] += 1
-                        # 触发补采
-                        try:
-                            await query_mengla(
-                                action=action,
-                                product_id="",
-                                catId=cat_id,
-                                dateType=granularity,
-                                timest=period_key,
-                                starRange="",
-                                endRange="",
-                                extra=None,
-                            )
+                        success = await _collect_with_retry(
+                            action=action,
+                            cat_id=cat_id,
+                            date_type=granularity,
+                            timest=period_key,
+                            granularity=granularity,
+                        )
+                        if success:
                             stats["backfilled"] += 1
-                        except Exception as e:
+                        else:
                             stats["failed"] += 1
-                            logger.warning("Backfill failed: %s error=%s", query, e)
-                        await asyncio.sleep(random.uniform(0.5, 1.5))
+                        await asyncio.sleep(random.uniform(interval * 0.25, interval * 0.75))
                 except Exception as e:
                     logger.warning("Backfill check error: %s", e)
-    
+
     logger.info("Backfill check completed: %s", stats)
     return stats
 
 
+# ==============================================================================
+# 全量多颗粒度补齐
+# ==============================================================================
 async def run_mengla_jobs(target_date: Optional[datetime] = None) -> None:
     """
     每天凌晨针对 MengLa 的 high / view / trend 三个接口进行补齐：
@@ -468,7 +355,7 @@ async def run_mengla_jobs(target_date: Optional[datetime] = None) -> None:
         for action, granularities in MENG_LA_ACTIONS.items():
             for gran in granularities:
                 period_key = periods[gran]
-                await query_mengla(  # 返回 (data, source)，此处仅触发拉取与落库
+                await query_mengla(
                     action=action,
                     product_id="",
                     catId=cat_id,
@@ -486,68 +373,51 @@ async def run_mengla_granular_jobs(
     trigger: str = TRIGGER_SCHEDULED,
 ) -> None:
     """
-    每天凌晨针对 MengLa 的 high / hot / chance / view / trend 五个接口，
-    按日 / 月 / 季 / 年四种颗粒度进行补齐：
-    - 非趋势接口：按昨天对应的 day/month/quarter/year period_key 各触发一次查询。
-    - 趋势接口：对近一年的 day/month/quarter/year 范围各触发一次查询。
-    所有查询统一复用 query_mengla（先 Mongo / 再 Redis / 后采集）。
-    
-    Args:
-        target_date: 目标日期，默认昨天
-        force_refresh: 是否强制刷新（跳过缓存）
-        trigger: 触发方式 ("manual" 或 "scheduled")
+    针对 MengLa 的 high / hot / chance / view / trend 五个接口，
+    按日 / 月 / 季 / 年四种颗粒度进行补齐。
     """
-    from datetime import timedelta
-    # 默认采集昨天的数据（外部数据源基于 T-1）
     now = target_date or (datetime.now() - timedelta(days=1))
     periods = make_period_keys(now)
     top_cat_ids = _get_top_cat_ids_safe()
-    
-    # 计算总任务数
-    # 非趋势接口：4 个接口 × 4 颗粒度 × N 类目
-    # 趋势接口：1 个接口 × 4 颗粒度 × N 类目
-    non_trend_count = len(top_cat_ids) * 4 * 4  # 4 actions × 4 granularities
-    trend_count = len(top_cat_ids) * 4  # 1 action × 4 granularities
+    interval = get_collect_interval()
+
+    non_trend_count = len(top_cat_ids) * 4 * 4
+    trend_count = len(top_cat_ids) * 4
     total_tasks = non_trend_count + trend_count
-    
-    # 确定任务名称和 ID
+
     task_id = "mengla_granular_force" if force_refresh else "mengla_granular"
     task_name = "MengLa 强制全量采集" if force_refresh else "MengLa 日/月/季/年补齐"
-    
-    # 创建同步任务日志
+
     log_id = await create_sync_task_log(
         task_id=task_id,
         task_name=task_name,
         total=total_tasks,
         trigger=trigger,
     )
-    
+
     logger.info(
         "Starting granular jobs: task_id=%s total=%d force_refresh=%s log_id=%s",
         task_id, total_tasks, force_refresh, log_id
     )
-    
-    # 统计
+
     completed_count = 0
     failed_count = 0
-    
-    # 退避重试配置
+
     MAX_RETRIES = 5
-    BASE_DELAY = 5.0   # 基础延迟 5 秒
-    MAX_DELAY = 120.0  # 最大延迟 2 分钟
-    
+    BASE_DELAY = 5.0
+    MAX_DELAY = 120.0
+
     async def query_with_retry(**kwargs) -> bool:
-        """带退避重试的查询，返回是否成功"""
         action = kwargs.get("action", "")
         cat_id = kwargs.get("catId", "")
         gran = kwargs.get("dateType", "")
-        
+
         def on_retry(attempt: int, exc: Exception):
             logger.warning(
                 "Granular job retry %d/%d: action=%s cat_id=%s gran=%s error=%s",
                 attempt, MAX_RETRIES, action, cat_id, gran, exc
             )
-        
+
         try:
             await retry_async(
                 query_mengla,
@@ -573,7 +443,6 @@ async def run_mengla_granular_jobs(
             return False
 
     try:
-        # 1) 非趋势接口：high / hot / chance / industryViewV2
         for cat_id in top_cat_ids:
             for action in ["high", "hot", "chance", "industryViewV2"]:
                 for gran in ["day", "month", "quarter", "year"]:
@@ -589,19 +458,18 @@ async def run_mengla_granular_jobs(
                         extra=None,
                         use_cache=not force_refresh,
                     )
-                    
+
                     if success:
                         completed_count += 1
                         await update_sync_task_progress(log_id, completed_delta=1)
                     else:
                         failed_count += 1
                         await update_sync_task_progress(log_id, failed_delta=1)
-                    
-                    await asyncio.sleep(random.uniform(3, 9))
 
-        # 2) 趋势接口：industryTrendRange，按年范围分别补齐 day/month/quarter/year 颗粒度
+                    await asyncio.sleep(random.uniform(interval * 1.5, interval * 4.5))
+
         year_str = str(now.year)
-        start_year, end_year = period_to_date_range("year", year_str)  # yyyy-01-01, yyyy-12-31
+        start_year, end_year = period_to_date_range("year", year_str)
 
         for cat_id in top_cat_ids:
             for gran in ["day", "month", "quarter", "year"]:
@@ -609,34 +477,32 @@ async def run_mengla_granular_jobs(
                     action="industryTrendRange",
                     product_id="",
                     catId=cat_id,
-                    dateType=gran.upper(),  # DAY / MONTH / QUARTER / YEAR
+                    dateType=gran.upper(),
                     timest="",
                     starRange=start_year,
                     endRange=end_year,
                     extra=None,
                     use_cache=not force_refresh,
                 )
-                
+
                 if success:
                     completed_count += 1
                     await update_sync_task_progress(log_id, completed_delta=1)
                 else:
                     failed_count += 1
                     await update_sync_task_progress(log_id, failed_delta=1)
-                
-                await asyncio.sleep(random.uniform(3, 9))
-        
-        # 标记任务完成
+
+                await asyncio.sleep(random.uniform(interval * 1.5, interval * 4.5))
+
         final_status = STATUS_FAILED if failed_count > 0 else STATUS_COMPLETED
         await finish_sync_task_log(log_id, status=final_status)
-        
+
         logger.info(
             "Granular jobs completed: date=%s force_refresh=%s completed=%d failed=%d",
             now.date(), force_refresh, completed_count, failed_count
         )
-        
+
     except Exception as e:
-        # 发生未预期的异常，标记任务失败
         await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=str(e))
         logger.error("Granular jobs failed with unexpected error: %s", e)
         raise
@@ -652,10 +518,14 @@ async def run_mengla_granular_jobs_force() -> None:
     await run_mengla_granular_jobs(force_refresh=True, trigger=TRIGGER_MANUAL)
 
 
+# ==============================================================================
+# 队列消费者（使用原子 claim）
+# ==============================================================================
 async def run_crawl_queue_once(max_batch: int = 1) -> None:
     """
     Queue consumer: pick one RUNNING/PENDING crawl job, run up to max_batch
     pending subtasks (query_mengla), update status and job stats.
+    使用 claim_subtasks 实现原子领取，防止并发消费者重复领取。
     """
     if database.mongo_db is None:
         return
@@ -669,13 +539,13 @@ async def run_crawl_queue_once(max_batch: int = 1) -> None:
     cat_id = config.get("catId", "") or ""
     extra = config.get("extra") or {}
 
-    subtasks = await get_pending_subtasks(job_id, limit=max_batch)
+    # 原子 claim subtasks（替代原来的 get_pending_subtasks + set_subtask_running 两步操作）
+    subtasks = await claim_subtasks(job_id, limit=max_batch)
     for sub in subtasks:
         sub_id = sub["_id"]
         action = sub.get("action", "")
         gran = sub.get("granularity", "day")
         period_key = sub.get("period_key", "")
-        await set_subtask_running(sub_id)
         try:
             if action == "industryTrendRange":
                 start_range, end_range = period_to_date_range(gran, period_key)
@@ -709,7 +579,9 @@ async def run_crawl_queue_once(max_batch: int = 1) -> None:
     await finish_job_if_done(job_id)
 
 
-# 行业智能面板相关任务：供 GET /panel/tasks 与 POST /panel/tasks/{task_id}/run 使用
+# ==============================================================================
+# 面板任务注册表
+# ==============================================================================
 PANEL_TASKS: Dict[str, dict] = {
     "mengla_granular": {
         "name": "MengLa 日/月/季/年补齐",
@@ -728,23 +600,23 @@ PANEL_TASKS: Dict[str, dict] = {
     },
     "daily_collect": {
         "name": "每日主采集",
-        "description": "采集当天的 day 颗粒度数据",
-        "run": run_daily_collect,
+        "description": "采集前一天的 day 颗粒度数据",
+        "run": lambda: run_period_collect("day"),
     },
     "monthly_collect": {
         "name": "月度采集",
-        "description": "采集当月的 month 颗粒度数据",
-        "run": run_monthly_collect,
+        "description": "采集上月的 month 颗粒度数据",
+        "run": lambda: run_period_collect("month"),
     },
     "quarterly_collect": {
         "name": "季度采集",
-        "description": "采集当季的 quarter 颗粒度数据",
-        "run": run_quarterly_collect,
+        "description": "采集上季的 quarter 颗粒度数据",
+        "run": lambda: run_period_collect("quarter"),
     },
     "yearly_collect": {
         "name": "年度采集",
-        "description": "采集当年的 year 颗粒度数据",
-        "run": run_yearly_collect,
+        "description": "采集上年的 year 颗粒度数据",
+        "run": lambda: run_period_collect("year"),
     },
     "backfill_check": {
         "name": "补数检查",
@@ -752,4 +624,3 @@ PANEL_TASKS: Dict[str, dict] = {
         "run": run_backfill_check,
     },
 }
-

@@ -7,6 +7,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from pymongo import ReturnDocument
+
 from ..infra.database import mongo_db
 from .domain import VALID_ACTIONS
 from ..utils.period import period_keys_in_range
@@ -118,6 +120,37 @@ async def get_pending_subtasks(job_id: Any, limit: int = 1) -> List[Dict[str, An
         {"job_id": job_id, "status": SUB_PENDING},
     ).sort("created_at", 1)
     return await cursor.to_list(length=limit)
+
+
+async def claim_next_subtask(job_id: Any) -> Optional[Dict[str, Any]]:
+    """
+    原子 claim：使用 find_one_and_update 将一个 PENDING subtask
+    原子地标记为 RUNNING 并返回，避免并发消费者重复领取。
+    """
+    if mongo_db is None:
+        return None
+    now = datetime.utcnow()
+    doc = await mongo_db[CRAWL_SUBTASKS].find_one_and_update(
+        {"job_id": job_id, "status": SUB_PENDING},
+        {
+            "$set": {"status": SUB_RUNNING, "started_at": now, "updated_at": now},
+            "$inc": {"attempts": 1},
+        },
+        sort=[("created_at", 1)],
+        return_document=ReturnDocument.AFTER,
+    )
+    return doc
+
+
+async def claim_subtasks(job_id: Any, limit: int = 1) -> List[Dict[str, Any]]:
+    """原子 claim 多个 subtask（逐条 find_one_and_update）。"""
+    claimed = []
+    for _ in range(limit):
+        doc = await claim_next_subtask(job_id)
+        if doc is None:
+            break
+        claimed.append(doc)
+    return claimed
 
 
 async def set_job_running(job_id: Any) -> None:

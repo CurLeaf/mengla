@@ -189,6 +189,14 @@ class MetricsCollector:
             date_key = now.strftime("%Y-%m-%d")
             await self._update_daily_metrics(date_key, action, duration_ms, "", success=False, cache_hit=False)
     
+    def _cleanup_old_daily_metrics(self) -> None:
+        """清理 30 天前的每日指标数据，防止 _daily_metrics 无限增长。"""
+        max_days = 30
+        cutoff = (datetime.utcnow() - timedelta(days=max_days)).strftime("%Y-%m-%d")
+        expired_keys = [k for k in self._daily_metrics if k < cutoff]
+        for k in expired_keys:
+            del self._daily_metrics[k]
+
     async def _update_daily_metrics(
         self,
         date_key: str,
@@ -198,7 +206,10 @@ class MetricsCollector:
         success: bool,
         cache_hit: bool,
     ) -> None:
-        """更新每日指标"""
+        """更新每日指标（同时清理过期数据）"""
+        # 定期清理过期的每日指标
+        self._cleanup_old_daily_metrics()
+
         if date_key not in self._daily_metrics:
             self._daily_metrics[date_key] = CollectMetrics()
             self._daily_metrics[date_key].start_time = datetime.utcnow()

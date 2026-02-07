@@ -35,6 +35,7 @@ build/
 # Env & secrets
 *.env
 *.env.*
+!.env.example
 
 # Docker
 data/db/

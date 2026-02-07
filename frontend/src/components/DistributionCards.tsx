@@ -1,3 +1,4 @@
+import React from "react";
 import type { RangeItem, IndustryView } from "../types/mengla";
 import type { PeriodType } from "./RankPeriodSelector";
 import { RankPeriodSelector } from "./RankPeriodSelector";
@@ -52,7 +53,7 @@ interface DistributionSectionProps {
   onRetry?: () => void;
 }
 
-export function DistributionSection({
+export const DistributionSection = React.memo(function DistributionSection({
   industryView,
   distributionPeriod = "update",
   distributionTimest = "",
@@ -117,4 +118,4 @@ export function DistributionSection({
       )}
     </section>
   );
-}
+});

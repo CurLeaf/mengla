@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   fetchPanelTasks,
   runPanelTask,
@@ -9,6 +10,7 @@ import {
   cancelAllTasks,
   purgeAllData,
 } from "../../services/mengla-admin-api";
+import { REFETCH_INTERVALS } from "../../constants";
 
 /* ========== 调度器控制面板 ========== */
 function SchedulerControl() {
@@ -16,7 +18,7 @@ function SchedulerControl() {
   const { data: status, isLoading } = useQuery({
     queryKey: ["scheduler-status"],
     queryFn: fetchSchedulerStatus,
-    refetchInterval: 5000,
+    refetchInterval: REFETCH_INTERVALS.scheduler,
   });
 
   const pauseMut = useMutation({
@@ -103,21 +105,19 @@ function SchedulerControl() {
 /* ========== 危险操作面板 ========== */
 function DangerZone() {
   const queryClient = useQueryClient();
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   const [purgeTargets, setPurgeTargets] = useState<string[]>(["mongodb", "redis", "l1"]);
 
   const cancelMut = useMutation({
     mutationFn: cancelAllTasks,
     onSuccess: (data) => {
+      setCancelConfirmOpen(false);
       queryClient.invalidateQueries({ queryKey: ["scheduler-status"] });
       queryClient.invalidateQueries({ queryKey: ["panel-tasks"] });
-      alert(
-        `已取消任务：\n` +
-        `  异步任务: ${data.cancelled_asyncio_tasks}\n` +
-        `  同步日志: ${data.cancelled_sync_logs}\n` +
-        `  爬虫任务: ${data.cancelled_crawl_jobs}\n` +
-        `  子任务: ${data.cancelled_crawl_subtasks}`
-      );
+      toast.success("已取消任务", {
+        description: `异步任务: ${data.cancelled_asyncio_tasks}, 同步日志: ${data.cancelled_sync_logs}, 爬虫任务: ${data.cancelled_crawl_jobs}, 子任务: ${data.cancelled_crawl_subtasks}`,
+      });
     },
   });
 
@@ -126,7 +126,9 @@ function DangerZone() {
     onSuccess: (data) => {
       setPurgeConfirmOpen(false);
       queryClient.invalidateQueries();
-      alert(`清空完成：\n${JSON.stringify(data.results, null, 2)}`);
+      toast.success("清空完成", {
+        description: JSON.stringify(data.results, null, 2),
+      });
     },
   });
 
@@ -151,18 +153,36 @@ function DangerZone() {
             终止后台 asyncio 任务，标记 MongoDB 中运行中的同步日志和爬虫任务为失败/取消
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm("确定取消所有运行中的采集任务？")) {
-              cancelMut.mutate();
-            }
-          }}
-          disabled={cancelMut.isPending}
-          className="shrink-0 px-3 py-1.5 text-[10px] rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
-        >
-          {cancelMut.isPending ? "取消中…" : "取消全部"}
-        </button>
+        {!cancelConfirmOpen ? (
+          <button
+            type="button"
+            onClick={() => setCancelConfirmOpen(true)}
+            disabled={cancelMut.isPending}
+            className="shrink-0 px-3 py-1.5 text-[10px] rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+            aria-label="取消所有任务"
+          >
+            {cancelMut.isPending ? "取消中…" : "取消全部"}
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-red-300">确定取消全部？</span>
+            <button
+              type="button"
+              onClick={() => cancelMut.mutate()}
+              disabled={cancelMut.isPending}
+              className="px-3 py-1 text-[10px] rounded bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50 transition-colors"
+            >
+              {cancelMut.isPending ? "取消中…" : "确认"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCancelConfirmOpen(false)}
+              className="px-3 py-1 text-[10px] rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
+            >
+              取消
+            </button>
+          </div>
+        )}
       </div>
 
       {cancelMut.isError && (
@@ -233,15 +253,14 @@ function DangerZone() {
               type="button"
               onClick={() => {
                 if (purgeTargets.length === 0) {
-                  alert("请至少选择一个清空目标");
+                  toast.warning("请至少选择一个清空目标");
                   return;
                 }
-                if (window.confirm(`确认清空：${purgeTargets.join(", ")}？此操作不可逆！`)) {
-                  purgeMut.mutate(purgeTargets);
-                }
+                purgeMut.mutate(purgeTargets);
               }}
               disabled={purgeMut.isPending}
               className="px-4 py-1.5 text-[10px] rounded bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50 transition-colors"
+              aria-label="确认清空数据"
             >
               {purgeMut.isPending ? "清空中…" : "确认清空"}
             </button>
@@ -291,7 +310,7 @@ export function DataSourceTaskManager() {
           <p className="text-xs text-red-400">{String(error)}</p>
         ) : (
           <div className="rounded-lg border border-white/10 bg-black/20 overflow-hidden">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs" role="table" aria-label="手动任务列表">
               <thead>
                 <tr className="border-b border-white/10 text-white/60">
                   <th className="px-4 py-2.5 font-medium">ID</th>

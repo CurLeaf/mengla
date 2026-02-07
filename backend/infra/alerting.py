@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional
 
 from ..utils.config import ALERTING_CONFIG
 from .metrics import get_metrics_collector
@@ -106,7 +107,7 @@ class AlertManager:
     def __init__(self):
         self._rules: Dict[str, AlertRule] = {}
         self._active_alerts: Dict[str, Alert] = {}
-        self._alert_history: List[Alert] = []
+        self._alert_history: Deque[Alert] = deque(maxlen=1000)
         self._lock = asyncio.Lock()
         self._notifiers: List[Callable[[Alert], None]] = []
         

@@ -222,3 +222,31 @@ def build_redis_lock_key(action: str, cat_id: str, granularity: str, period_key:
     """构建 Redis 分布式锁 key"""
     prefix = REDIS_KEY_PREFIX["lock"]
     return f"{prefix}:{action}:{cat_id or 'all'}:{granularity}:{period_key}"
+
+
+# ==============================================================================
+# 采集间隔配置
+# ==============================================================================
+def get_collect_interval() -> float:
+    """采集请求间隔（秒），可通过环境变量 COLLECT_INTERVAL_SECONDS 调整"""
+    return float(os.getenv("COLLECT_INTERVAL_SECONDS", "2.0"))
+
+
+# ==============================================================================
+# 启动时环境变量校验
+# ==============================================================================
+def validate_env() -> None:
+    """
+    启动时校验关键环境变量。
+    若缺少必要变量则记录警告（不中断启动，兼容本地开发场景——
+    本地 .env 或 docker-compose 会提供默认值）。
+    """
+    import logging
+    _logger = logging.getLogger("mengla-config")
+    recommended = ["MONGO_URI", "REDIS_URI"]
+    missing = [k for k in recommended if not os.getenv(k)]
+    if missing:
+        _logger.warning(
+            "Recommended env vars not set (will use defaults): %s",
+            ", ".join(missing),
+        )

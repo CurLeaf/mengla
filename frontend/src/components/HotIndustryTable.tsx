@@ -1,3 +1,4 @@
+import React from "react";
 import type { HighListRow } from "../types/mengla";
 import { TableSkeleton, InlineError } from "./LoadingSkeleton";
 
@@ -9,7 +10,7 @@ interface HotIndustryTableProps {
   onRetry?: () => void;
 }
 
-export function HotIndustryTable({
+export const HotIndustryTable = React.memo(function HotIndustryTable({
   data,
   title = "蓝海类目列表",
   isLoading,
@@ -33,7 +34,7 @@ export function HotIndustryTable({
       ) : (
       <>
       <div className="overflow-auto max-h-[420px]">
-        <table className="min-w-full text-xs text-white/80">
+        <table className="min-w-full text-xs text-white/80" role="table" aria-label={title}>
           <thead className="bg-white/[0.03] border-y border-white/[0.08]">
             <tr>
               <th className="px-6 py-2 text-left font-normal text-white/60">
@@ -134,4 +135,4 @@ export function HotIndustryTable({
       )}
     </section>
   );
-}
+});

@@ -3,6 +3,7 @@ JWT 认证模块
 - 登录验证 → 签发 token
 - 请求鉴权中间件
 - Token 生成（管理后台用）
+- 登录频率限制（Redis 滑动窗口）
 """
 
 from __future__ import annotations
@@ -15,20 +16,35 @@ from typing import Optional
 import jwt
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from passlib.context import CryptContext
 
 logger = logging.getLogger("mengla-backend")
 
 # ---------------------------------------------------------------------------
-# 配置（通过环境变量）
+# 密码哈希上下文
 # ---------------------------------------------------------------------------
-JWT_SECRET = os.getenv("JWT_SECRET", "mengla-default-secret-change-me")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# ---------------------------------------------------------------------------
+# 配置（通过环境变量，安全关键项强制要求）
+# ---------------------------------------------------------------------------
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError(
+        "JWT_SECRET environment variable is required. "
+        'Generate: python -c "import secrets; print(secrets.token_urlsafe(64))"'
+    )
 JWT_ALGORITHM = "HS256"
 # 登录 token 默认有效期（小时）
 JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
 
 # 管理员账号（环境变量配置）
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+_RAW_PW = os.getenv("ADMIN_PASSWORD", "")
+if not _RAW_PW:
+    raise RuntimeError("ADMIN_PASSWORD environment variable is required")
+_ADMIN_PW_HASH = pwd_context.hash(_RAW_PW)
+del _RAW_PW
 
 # Bearer scheme
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -92,5 +108,30 @@ async def require_auth(
 
 
 def authenticate_user(username: str, password: str) -> bool:
-    """简单用户名密码验证（环境变量配置）"""
-    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+    """用户名密码验证（bcrypt 哈希比较）"""
+    if username != ADMIN_USERNAME:
+        return False
+    return pwd_context.verify(password, _ADMIN_PW_HASH)
+
+
+# ---------------------------------------------------------------------------
+# 登录频率限制（Redis 滑动窗口：60 秒 10 次）
+# ---------------------------------------------------------------------------
+async def check_login_rate(ip: str) -> bool:
+    """
+    检查登录频率，返回 True 表示允许，False 表示超限。
+    若 Redis 不可用则放行（降级策略）。
+    """
+    from ..infra.database import redis_client
+
+    if redis_client is None:
+        return True
+    try:
+        key = f"rate_limit:login:{ip}"
+        count = await redis_client.incr(key)
+        if count == 1:
+            await redis_client.expire(key, 60)
+        return count <= 10
+    except Exception:
+        logger.warning("登录限流 Redis 异常，降级放行", exc_info=True)
+        return True

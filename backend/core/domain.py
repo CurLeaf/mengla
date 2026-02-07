@@ -49,6 +49,7 @@ VALID_ACTIONS = {"high", "hot", "chance", "industryViewV2", "industryTrendRange"
 logger = logging.getLogger("mengla-domain")
 
 # 同参采集请求去重表：key 通常为 f"{action}:{params_hash}"
+_in_flight_lock = asyncio.Lock()
 IN_FLIGHT: Dict[str, asyncio.Future] = {}
 
 # ==============================================================================
@@ -134,11 +135,22 @@ async def _dedupe_by_query(
     """
     同一 key 下若有多条文档则只保留一条：优先保留有数据的，其次保留 created_at 最新的。
     删除其余重复文档。
+
+    安全保障：
+    - 删除前使用聚合验证确实存在重复（count > 1）
+    - 始终保留排序后的第一条记录
+    - 仅按 _id 精确删除冗余文档
     """
     cursor = collection.find(mongo_query)
     docs = await cursor.to_list(length=100)
     if len(docs) <= 1:
         return
+
+    # 二次验证：确认确实有重复
+    count = await collection.count_documents(mongo_query)
+    if count <= 1:
+        return
+
     # 排序：有数据的排前面，同为空则按 created_at 降序（新的在前）
     def _sort_key(d: Dict[str, Any]) -> tuple:
         empty = 1 if _is_stored_data_empty(d) else 0
@@ -148,15 +160,21 @@ async def _dedupe_by_query(
 
     docs_sorted = sorted(docs, key=_sort_key)
     keep_id = docs_sorted[0]["_id"]
-    deleted = 0
-    for d in docs_sorted[1:]:
-        await collection.delete_one({"_id": d["_id"]})
-        deleted += 1
+    ids_to_remove = [d["_id"] for d in docs_sorted[1:]]
+
+    if not ids_to_remove:
+        return
+
+    # 批量删除冗余文档（按 _id 精确匹配）
+    result = await collection.delete_many({"_id": {"$in": ids_to_remove}})
+    deleted = result.deleted_count
+
     if deleted:
         logger.warning(
-            "MengLa dedupe: collection=%s query=%s kept 1 deleted %d",
+            "MengLa dedupe: collection=%s query=%s kept _id=%s deleted %d",
             collection_name,
             mongo_query,
+            keep_id,
             deleted,
         )
 
@@ -591,21 +609,31 @@ async def _fetch_mengla_data(
             _unwrapped = _unwrap_result_data(result)
         return (_unwrapped, "fresh")
 
-    # 使用 in-flight 表防止同参并发多次打采集
+    # 使用 in-flight 表防止同参并发多次打采集（加锁保护）
     request_key = f"{action}:{cat_id}:{granularity}:{period_key or ''}"
-    existing_task = IN_FLIGHT.get(request_key)
-    if existing_task is not None:
-        return await existing_task
+
+    async with _in_flight_lock:
+        existing_task = IN_FLIGHT.get(request_key)
+        if existing_task is not None:
+            # 已有同参请求在飞行中，等待其结果
+            task_to_await = existing_task
+        else:
+            task_to_await = None
+
+    if task_to_await is not None:
+        return await task_to_await
 
     loop = asyncio.get_running_loop()
     task: asyncio.Future = loop.create_task(_fetch_and_persist())
-    IN_FLIGHT[request_key] = task
+    async with _in_flight_lock:
+        IN_FLIGHT[request_key] = task
     try:
         return await task
     finally:
-        # 仅创建该 task 的请求负责清理
-        if IN_FLIGHT.get(request_key) is task:
-            IN_FLIGHT.pop(request_key, None)
+        async with _in_flight_lock:
+            # 仅创建该 task 的请求负责清理
+            if IN_FLIGHT.get(request_key) is task:
+                IN_FLIGHT.pop(request_key, None)
 
 
 # ==============================================================================

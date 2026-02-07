@@ -29,7 +29,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # Step 1: 构建后端镜像
 # ---------------------------------------------------------------------------
 echo "========================================="
-echo "[1/4] Building backend image..."
+echo "[1/6] Building backend image..."
 echo "========================================="
 docker build \
     -f "${ROOT_DIR}/backend/Dockerfile" \
@@ -43,7 +43,7 @@ echo "Backend build complete."
 # Step 2: 构建前端 + Nginx 镜像（多阶段：node build → nginx 托管）
 # ---------------------------------------------------------------------------
 echo "========================================="
-echo "[2/4] Building nginx (frontend) image..."
+echo "[2/6] Building nginx (frontend) image..."
 echo "========================================="
 docker build \
     -f "${ROOT_DIR}/frontend/Dockerfile" \
@@ -54,16 +54,34 @@ docker build \
 echo "Nginx build complete."
 
 # ---------------------------------------------------------------------------
-# Step 3: 推送镜像
+# Step 3: 镜像安全扫描（可选，若 trivy/docker scout 不可用则跳过）
 # ---------------------------------------------------------------------------
 echo "========================================="
-echo "[3/4] Pushing backend images..."
+echo "[3/6] Scanning images for vulnerabilities..."
+echo "========================================="
+if command -v trivy &> /dev/null; then
+    echo "Using trivy for scanning..."
+    trivy image --severity HIGH,CRITICAL "${BACKEND_IMAGE}:latest" || echo "⚠️ Backend image scan found issues (non-blocking)"
+    trivy image --severity HIGH,CRITICAL "${NGINX_IMAGE}:latest" || echo "⚠️ Nginx image scan found issues (non-blocking)"
+elif docker scout version &> /dev/null 2>&1; then
+    echo "Using docker scout for scanning..."
+    docker scout cves "${BACKEND_IMAGE}:latest" --only-severity critical,high || echo "⚠️ Backend image scan found issues (non-blocking)"
+    docker scout cves "${NGINX_IMAGE}:latest" --only-severity critical,high || echo "⚠️ Nginx image scan found issues (non-blocking)"
+else
+    echo "⚠️ No scanner available (trivy / docker scout). Skipping image scan."
+fi
+
+# ---------------------------------------------------------------------------
+# Step 4: 推送镜像
+# ---------------------------------------------------------------------------
+echo "========================================="
+echo "[4/6] Pushing backend images..."
 echo "========================================="
 docker push "${BACKEND_IMAGE}:latest"
 docker push "${BACKEND_IMAGE}:${VERSION}"
 
 echo "========================================="
-echo "[4/4] Pushing nginx images..."
+echo "[5/6] Pushing nginx images..."
 echo "========================================="
 docker push "${NGINX_IMAGE}:latest"
 docker push "${NGINX_IMAGE}:${VERSION}"

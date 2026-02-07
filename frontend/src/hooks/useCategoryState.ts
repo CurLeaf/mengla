@@ -1,11 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchCategories } from "../services/category-api";
-import type { Category, CategoryChild, CategoryList } from "../types/category";
+import { STALE_TIMES, GC_TIMES } from "../constants";
+import type { Category, CategoryChild } from "../types/category";
 
 export function useCategoryState() {
-  const [categories, setCategories] = useState<CategoryList>([]);
   const [selectedCatId1, setSelectedCatId1] = useState<string | null>(null);
   const [selectedCatId2, setSelectedCatId2] = useState<string | null>(null);
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: fetchCategories,
+    staleTime: STALE_TIMES.categories,
+    gcTime: GC_TIMES.categories,
+  });
+
+  // 当 categories 首次加载完成时，自动选中第一个类目
+  useEffect(() => {
+    if (categories.length > 0) {
+      setSelectedCatId1((prev) =>
+        prev === null ? String(categories[0].catId) : prev
+      );
+    }
+  }, [categories]);
 
   const level2Options = useMemo(() => {
     if (!selectedCatId1 || !categories.length) return [];
@@ -30,28 +47,6 @@ export function useCategoryState() {
     const name2 = second ? second.catNameCn || second.catName || "" : "";
     return name2 ? `${name1} > ${name2}` : name1;
   }, [categories, selectedCatId1, selectedCatId2, level2Options]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadCategories = async () => {
-      try {
-        const data = await fetchCategories();
-        if (cancelled) return;
-        setCategories(data || []);
-        if (data?.length) {
-          setSelectedCatId1((prev: string | null) =>
-            prev === null ? String(data[0].catId) : prev
-          );
-        }
-      } catch (e) {
-        if (!cancelled) console.error("加载类目失败", e);
-      }
-    };
-    loadCategories();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   return {
     categories,

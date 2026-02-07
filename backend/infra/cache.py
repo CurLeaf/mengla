@@ -117,6 +117,7 @@ class L2Cache:
     def __init__(self):
         self._hits = 0
         self._misses = 0
+        self._stats_lock = asyncio.Lock()
     
     async def get(
         self, action: str, cat_id: str, granularity: str, period_key: str
@@ -128,14 +129,17 @@ class L2Cache:
         try:
             cached = await database.redis_client.get(key)
             if cached is not None:
-                self._hits += 1
+                async with self._stats_lock:
+                    self._hits += 1
                 logger.debug(f"L2 Redis hit: {key}")
                 return json.loads(cached)
-            self._misses += 1
+            async with self._stats_lock:
+                self._misses += 1
             return None
         except Exception as e:
             logger.warning(f"L2 Redis get error: {e}")
-            self._misses += 1
+            async with self._stats_lock:
+                self._misses += 1
             return None
     
     async def set(
@@ -196,6 +200,7 @@ class L3Storage:
     def __init__(self):
         self._hits = 0
         self._misses = 0
+        self._stats_lock = asyncio.Lock()
     
     async def get(
         self, action: str, cat_id: str, granularity: str, period_key: str
@@ -214,14 +219,17 @@ class L3Storage:
         try:
             doc = await collection.find_one(query)
             if doc is not None:
-                self._hits += 1
+                async with self._stats_lock:
+                    self._hits += 1
                 logger.debug(f"L3 MongoDB hit: {query}")
                 return doc
-            self._misses += 1
+            async with self._stats_lock:
+                self._misses += 1
             return None
         except Exception as e:
             logger.warning(f"L3 MongoDB get error: {e}")
-            self._misses += 1
+            async with self._stats_lock:
+                self._misses += 1
             return None
     
     async def set(

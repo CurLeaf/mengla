@@ -68,7 +68,8 @@ export class MengLaService<T = unknown> {
     await this.waitForRequestInterval()
 
     const baseUrl = process.env.COLLECT_SERVICE_URL || 'https://extract.b.nps.qzsyzn.com'
-    const apiKey = process.env.COLLECT_SERVICE_API_KEY || 'ws_317755c5f981afc5a23cae8c47afedeea4bb4a21e7d146911b2e6a3c7f6f0f38'
+    const apiKey = process.env.COLLECT_SERVICE_API_KEY
+    if (!apiKey) throw new Error('COLLECT_SERVICE_API_KEY environment variable is required')
 
     // 获取托管任务列表（直接请求采集服务 API）
     const listRes = await fetchWithTimeout(

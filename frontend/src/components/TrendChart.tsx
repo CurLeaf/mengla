@@ -1,3 +1,4 @@
+import React from "react";
 import {
   LineChart,
   Line,
@@ -18,7 +19,7 @@ interface TrendChartProps {
   onRetry?: () => void;
 }
 
-export function TrendChart({ points, isLoading, error, onRetry }: TrendChartProps) {
+export const TrendChart = React.memo(function TrendChart({ points, isLoading, error, onRetry }: TrendChartProps) {
   if (isLoading) return <ChartSkeleton />;
 
   const data =
@@ -99,4 +100,4 @@ export function TrendChart({ points, isLoading, error, onRetry }: TrendChartProp
       )}
     </section>
   );
-}
+});

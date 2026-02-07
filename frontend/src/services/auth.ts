@@ -26,6 +26,27 @@ export function isAuthenticated(): boolean {
   return !!getToken();
 }
 
+/* ---------- SPA 导航回调 ---------- */
+
+let _onUnauthorized: (() => void) | null = null;
+
+/**
+ * 由 App 组件在挂载时注册，提供 SPA 内的路由跳转能力。
+ * 避免 authFetch / logout 直接使用 window.location.href 破坏 SPA。
+ */
+export function setUnauthorizedHandler(handler: () => void) {
+  _onUnauthorized = handler;
+}
+
+function navigateToLogin() {
+  if (_onUnauthorized) {
+    _onUnauthorized();
+  } else {
+    // fallback：回调未注册时（如应用刚加载）仍可跳转
+    window.location.href = "/login";
+  }
+}
+
 /* ---------- 登录 / 登出 ---------- */
 
 export interface LoginResult {
@@ -50,7 +71,7 @@ export async function login(username: string, password: string): Promise<LoginRe
 
 export function logout(): void {
   clearToken();
-  window.location.href = "/login";
+  navigateToLogin();
 }
 
 /* ---------- Token 生成 ---------- */
@@ -99,7 +120,7 @@ export async function authFetch(
     clearToken();
     // 避免在登录页死循环
     if (!window.location.pathname.startsWith("/login")) {
-      window.location.href = "/login";
+      navigateToLogin();
     }
   }
 

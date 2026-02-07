@@ -2,7 +2,8 @@
  * Sync Task API - 同步任务日志相关 API
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+import { authFetch } from "./auth";
+import { API_BASE } from "../constants";
 
 // ==============================================================================
 // Types
@@ -40,7 +41,7 @@ export interface TodaySyncTasksResponse {
  * 获取当天的同步任务列表
  */
 export async function fetchTodaySyncTasks(): Promise<SyncTaskLog[]> {
-  const resp = await fetch(`${API_BASE}/api/sync-tasks/today`);
+  const resp = await authFetch(`${API_BASE}/api/sync-tasks/today`);
   if (!resp.ok) {
     throw new Error(`Failed to fetch today sync tasks: ${resp.status}`);
   }
@@ -52,7 +53,7 @@ export async function fetchTodaySyncTasks(): Promise<SyncTaskLog[]> {
  * 获取单个同步任务的详情
  */
 export async function fetchSyncTaskDetail(logId: string): Promise<SyncTaskLog> {
-  const resp = await fetch(`${API_BASE}/api/sync-tasks/${logId}`);
+  const resp = await authFetch(`${API_BASE}/api/sync-tasks/${logId}`);
   if (!resp.ok) {
     throw new Error(`Failed to fetch sync task detail: ${resp.status}`);
   }

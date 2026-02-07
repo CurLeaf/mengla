@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { authFetch, logout } from "./services/auth";
+import { toast } from "sonner";
+import { authFetch, logout, setUnauthorizedHandler } from "./services/auth";
 import { useCategoryState } from "./hooks/useCategoryState";
+import { API_BASE } from "./constants";
 import type { Category, CategoryChild } from "./types/category";
 
 /* ---------- 常量 ---------- */
@@ -26,7 +28,13 @@ export interface LayoutContext {
 /* ---------- Layout 组件 ---------- */
 export default function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isAdmin = location.pathname === "/admin";
+
+  /* ---- SPA 路由：注册 401 回调 ---- */
+  useEffect(() => {
+    setUnauthorizedHandler(() => navigate("/login"));
+  }, [navigate]);
 
   /* ---- 类目状态 ---- */
   const {
@@ -60,18 +68,16 @@ export default function App() {
   const triggerManualCollect = async () => {
     setTriggerLoading(true);
     try {
-      const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-
       if (collectMode === "force") {
         const resp = await authFetch(`${API_BASE}/panel/tasks/mengla_granular_force/run`, { method: "POST" });
         if (!resp.ok) throw new Error(`强制采集启动失败: ${resp.status}`);
         queryClient.invalidateQueries({ queryKey: ["mengla"] });
-        alert("强制采集任务已启动！将跳过所有缓存直接从数据源采集，请在终端查看进度");
+        toast.success("强制采集任务已启动", { description: "将跳过所有缓存直接从数据源采集，请在终端查看进度" });
       } else if (collectMode === "fill") {
         const resp = await authFetch(`${API_BASE}/panel/tasks/mengla_granular/run`, { method: "POST" });
         if (!resp.ok) throw new Error(`补齐采集启动失败: ${resp.status}`);
         queryClient.invalidateQueries({ queryKey: ["mengla"] });
-        alert("补齐采集任务已启动！将只采集缺失的数据，已有缓存的会跳过");
+        toast.success("补齐采集任务已启动", { description: "将只采集缺失的数据，已有缓存的会跳过" });
       } else {
         // "当前"模式：激活页面查询（fetchTrigger > 0 时 useQuery 才 enabled）
         setFetchTrigger((prev) => prev + 1);
@@ -79,7 +85,7 @@ export default function App() {
       }
     } catch (e) {
       console.error("手动触发采集失败", e);
-      alert(`采集失败: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error("采集失败", { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setTriggerLoading(false);
     }
@@ -126,6 +132,7 @@ export default function App() {
                     onClick={() => triggerManualCollect()}
                     disabled={triggerLoading}
                     className="px-2 py-1 text-[10px] bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    aria-label="开始采集数据"
                     title={
                       collectMode === "force"
                         ? "强制刷新所有数据（跳过缓存）"
@@ -141,7 +148,7 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="flex-1 overflow-y-auto py-3">
+          <nav className="flex-1 overflow-y-auto py-3" aria-label="主导航">
             {MODES.map((item) => (
               <NavLink
                 key={item.key}
@@ -190,6 +197,7 @@ export default function App() {
               type="button"
               onClick={() => logout()}
               className="w-full text-left text-xs text-white/45 hover:text-white/70 transition-colors"
+              aria-label="退出登录"
             >
               退出登录
             </button>
@@ -247,6 +255,7 @@ export default function App() {
                       setFetchTrigger((prev) => prev + 1);
                       queryClient.invalidateQueries({ queryKey: ["mengla"] });
                     }}
+                    aria-label="刷新数据"
                   >
                     刷新
                   </button>
