@@ -1,0 +1,31 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.cursor
+.idea
+
+# Node
+node_modules
+frontend/node_modules
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+
+# Docker
+docker
+data
+
+# Build artifacts
+frontend/dist
+
+# Logs & temp
+*.log
+.env.local
+.cursor

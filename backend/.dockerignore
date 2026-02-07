@@ -1,0 +1,18 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+
+# IDE
+.vscode
+.cursor
+.idea
+
+# Logs & temp
+*.log
+.env.local
+
+# Tools (开发工具，不需要打包)
+tools/
