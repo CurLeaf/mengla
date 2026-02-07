@@ -10,23 +10,44 @@
     {
       "label": "Dev: Backend (FastAPI)",
       "type": "shell",
-      "command": "python -m pip install -r backend/requirements.txt; python -m uvicorn backend.main:app --reload --reload-dir backend --host 0.0.0.0 --port 8000",
+      "command": "pnpm dev:backend",
       "options": {
-        "cwd": "."
+        "cwd": "${workspaceFolder}"
       },
       "isBackground": true,
-      "problemMatcher": []
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "dev"
+      }
     },
     {
       "label": "Dev: Frontend (Vite)",
       "type": "shell",
-      "command": "pnpm --filter industry-monitor-frontend dev",
+      "command": "pnpm dev:frontend",
       "options": {
-        "cwd": "."
+        "cwd": "${workspaceFolder}"
       },
       "isBackground": true,
-      "problemMatcher": []
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "dev"
+      }
+    },
+    {
+      "label": "Dev: Start All",
+      "dependsOn": [
+        "Dev: Backend (FastAPI)",
+        "Dev: Frontend (Vite)"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always"
+      }
     }
   ]
 }
-

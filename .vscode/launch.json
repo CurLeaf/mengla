@@ -2,11 +2,13 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Dev Hotmode (Frontend)",
-      "type": "pwa-chrome",
+      "name": "Dev: Backend + Frontend",
+      "type": "node",
       "request": "launch",
-      "url": "http://localhost:5173"
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:backend"],
+      "console": "integratedTerminal",
+      "preLaunchTask": "Dev: Start All"
     }
   ]
 }
-
