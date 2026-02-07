@@ -11,14 +11,6 @@ export default defineConfig({
         target: "http://localhost:8000",
         changeOrigin: true,
       },
-      "/panel": {
-        target: "http://localhost:8000",
-        changeOrigin: true,
-      },
-      "/admin": {
-        target: "http://localhost:8000",
-        changeOrigin: true,
-      },
       "/health": {
         target: "http://localhost:8000",
         changeOrigin: true,

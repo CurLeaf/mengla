@@ -16,17 +16,17 @@
   ],
   "tags": [
     { "name": "Health", "description": "健康检查" },
-    { "name": "Auth", "description": "认证相关接口" },
-    { "name": "Categories", "description": "类目与行业数据" },
-    { "name": "MengLa", "description": "勐腊数据查询" },
+    { "name": "认证", "description": "认证相关接口" },
+    { "name": "类目数据", "description": "类目与行业数据" },
+    { "name": "MengLa 数据", "description": "勐腊数据查询" },
     { "name": "Webhook", "description": "Webhook 回调" },
-    { "name": "Panel", "description": "面板配置与任务" },
-    { "name": "Admin", "description": "管理后台" },
-    { "name": "Admin - Cache", "description": "缓存管理" },
-    { "name": "Admin - Alerts", "description": "告警管理" },
-    { "name": "Admin - Scheduler", "description": "调度器管理" },
-    { "name": "Admin - Data", "description": "数据管理" },
-    { "name": "SyncTasks", "description": "同步任务" }
+    { "name": "面板配置", "description": "面板配置与任务" },
+    { "name": "管理运维", "description": "管理后台" },
+    { "name": "管理运维 - 缓存", "description": "缓存管理" },
+    { "name": "管理运维 - 告警", "description": "告警管理" },
+    { "name": "管理运维 - 调度器", "description": "调度器管理" },
+    { "name": "管理运维 - 数据", "description": "数据管理" },
+    { "name": "同步任务", "description": "同步任务" }
   ],
   "components": {
     "securitySchemes": {
@@ -482,7 +482,7 @@
     },
     "/api/auth/login": {
       "post": {
-        "tags": ["Auth"],
+        "tags": ["认证"],
         "summary": "用户登录",
         "description": "使用用户名密码登录，获取 JWT Token。有登录频率限制（60秒内最多10次）。",
         "operationId": "login",
@@ -524,7 +524,7 @@
     },
     "/api/auth/generate-token": {
       "post": {
-        "tags": ["Auth"],
+        "tags": ["认证"],
         "summary": "生成长期 Token",
         "description": "为已认证用户生成长期有效的 API Token（默认1年）",
         "operationId": "generateToken",
@@ -559,7 +559,7 @@
     },
     "/api/auth/me": {
       "get": {
-        "tags": ["Auth"],
+        "tags": ["认证"],
         "summary": "获取当前用户信息",
         "description": "验证当前 Token 并返回用户信息",
         "operationId": "getMe",
@@ -584,9 +584,9 @@
         }
       }
     },
-    "/api/categories": {
+    "/api/data/categories": {
       "get": {
-        "tags": ["Categories"],
+        "tags": ["类目数据"],
         "summary": "获取类目树",
         "description": "从 category.json 获取完整类目树结构",
         "operationId": "getCategories",
@@ -614,9 +614,9 @@
         }
       }
     },
-    "/api/industry/daily": {
+    "/api/data/industry/daily": {
       "get": {
-        "tags": ["Categories"],
+        "tags": ["类目数据"],
         "summary": "获取每日行业数据",
         "description": "获取指定 period_key 的每日行业数据，优先从 MongoDB 查询，其次从 Redis 获取",
         "operationId": "getDailyIndustry",
@@ -654,9 +654,9 @@
         }
       }
     },
-    "/api/mengla/query": {
+    "/api/data/mengla/query": {
       "post": {
-        "tags": ["MengLa"],
+        "tags": ["MengLa 数据"],
         "summary": "统一查询接口",
         "description": "勐腊统一查询端点，支持所有 action 类型（high/hot/chance/industryViewV2/industryTrendRange）",
         "operationId": "menglaQuery",
@@ -699,9 +699,9 @@
         }
       }
     },
-    "/api/mengla/high": {
+    "/api/data/mengla/high": {
       "post": {
-        "tags": ["MengLa"],
+        "tags": ["MengLa 数据"],
         "summary": "蓝海行业 Top",
         "description": "查询蓝海行业 Top 数据",
         "operationId": "menglaHigh",
@@ -740,9 +740,9 @@
         }
       }
     },
-    "/api/mengla/hot": {
+    "/api/data/mengla/hot": {
       "post": {
-        "tags": ["MengLa"],
+        "tags": ["MengLa 数据"],
         "summary": "热销行业 Top",
         "description": "查询热销行业 Top 数据",
         "operationId": "menglaHot",
@@ -781,9 +781,9 @@
         }
       }
     },
-    "/api/mengla/chance": {
+    "/api/data/mengla/chance": {
       "post": {
-        "tags": ["MengLa"],
+        "tags": ["MengLa 数据"],
         "summary": "潜力行业 Top",
         "description": "查询潜力行业 Top 数据",
         "operationId": "menglaChance",
@@ -822,9 +822,9 @@
         }
       }
     },
-    "/api/mengla/industry-view": {
+    "/api/data/mengla/industry-view": {
       "post": {
-        "tags": ["MengLa"],
+        "tags": ["MengLa 数据"],
         "summary": "行业概览",
         "description": "查询行业概览数据（销量/GMV/价格区间分布 + 品牌占比）",
         "operationId": "menglaIndustryView",
@@ -863,9 +863,9 @@
         }
       }
     },
-    "/api/mengla/industry-trend": {
+    "/api/data/mengla/industry-trend": {
       "post": {
-        "tags": ["MengLa"],
+        "tags": ["MengLa 数据"],
         "summary": "行业趋势",
         "description": "查询行业趋势数据（通常使用 starRange/endRange 指定时间范围）",
         "operationId": "menglaIndustryTrend",
@@ -961,9 +961,9 @@
         }
       }
     },
-    "/panel/config": {
+    "/api/panel/config": {
       "get": {
-        "tags": ["Panel"],
+        "tags": ["面板配置"],
         "summary": "获取面板配置",
         "description": "获取当前行业面板配置（公开接口）",
         "operationId": "getPanelConfig",
@@ -982,7 +982,7 @@
         }
       },
       "put": {
-        "tags": ["Panel"],
+        "tags": ["面板配置"],
         "summary": "更新面板配置",
         "description": "更新行业面板配置",
         "operationId": "updatePanelConfig",
@@ -1018,9 +1018,9 @@
         }
       }
     },
-    "/panel/tasks": {
+    "/api/panel/tasks": {
       "get": {
-        "tags": ["Panel"],
+        "tags": ["面板配置"],
         "summary": "获取面板任务列表",
         "description": "列出行业面板相关的可用任务",
         "operationId": "getPanelTasks",
@@ -1055,9 +1055,9 @@
         }
       }
     },
-    "/panel/tasks/{task_id}/run": {
+    "/api/panel/tasks/{task_id}/run": {
       "post": {
-        "tags": ["Panel"],
+        "tags": ["面板配置"],
         "summary": "运行面板任务",
         "description": "按 ID 触发面板任务（后台运行）",
         "operationId": "runPanelTask",
@@ -1105,9 +1105,9 @@
         }
       }
     },
-    "/panel/data/fill": {
+    "/api/panel/data/fill": {
       "post": {
-        "tags": ["Panel"],
+        "tags": ["面板配置"],
         "summary": "数据补录",
         "description": "提交后台任务，为指定日期范围补录缺失的勐腊数据",
         "operationId": "panelDataFill",
@@ -1149,12 +1149,13 @@
         }
       }
     },
-    "/admin/mengla/status": {
+    "/api/admin/mengla/status": {
       "post": {
-        "tags": ["Admin"],
+        "tags": ["管理运维"],
         "summary": "查询数据可用性",
         "description": "检查指定类目 + 日期范围 + 粒度的数据可用性状态",
         "operationId": "menglaStatus",
+        "security": [{ "BearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -1171,13 +1172,21 @@
                 "schema": { "$ref": "#/components/schemas/MengLaStatusResponse" }
               }
             }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
           }
         }
       }
     },
-    "/admin/mengla/enqueue-full-crawl": {
+    "/api/admin/mengla/enqueue-full-crawl": {
       "post": {
-        "tags": ["Admin"],
+        "tags": ["管理运维"],
         "summary": "提交全量爬取任务",
         "description": "创建基于队列的全量爬取任务",
         "operationId": "enqueueFullCrawl",
@@ -1218,12 +1227,13 @@
         }
       }
     },
-    "/admin/backfill": {
+    "/api/admin/backfill": {
       "post": {
-        "tags": ["Admin"],
+        "tags": ["管理运维"],
         "summary": "触发历史数据回填",
         "description": "触发历史数据回填任务（后台运行）",
         "operationId": "backfill",
+        "security": [{ "BearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -1247,13 +1257,21 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
           }
         }
       }
     },
-    "/admin/metrics": {
+    "/api/admin/metrics": {
       "get": {
-        "tags": ["Admin"],
+        "tags": ["管理运维"],
         "summary": "获取采集指标",
         "description": "获取采集指标统计数据",
         "operationId": "getMetrics",
@@ -1281,9 +1299,9 @@
         }
       }
     },
-    "/admin/metrics/latency": {
+    "/api/admin/metrics/latency": {
       "get": {
-        "tags": ["Admin"],
+        "tags": ["管理运维"],
         "summary": "获取延迟百分位",
         "description": "获取延迟百分位统计数据",
         "operationId": "getMetricsLatency",
@@ -1311,9 +1329,9 @@
         }
       }
     },
-    "/admin/alerts": {
+    "/api/admin/alerts": {
       "get": {
-        "tags": ["Admin - Alerts"],
+        "tags": ["管理运维 - 告警"],
         "summary": "获取活跃告警",
         "description": "获取当前活跃的告警列表",
         "operationId": "getAlerts",
@@ -1344,9 +1362,9 @@
         }
       }
     },
-    "/admin/alerts/history": {
+    "/api/admin/alerts/history": {
       "get": {
-        "tags": ["Admin - Alerts"],
+        "tags": ["管理运维 - 告警"],
         "summary": "获取告警历史",
         "description": "获取告警历史记录",
         "operationId": "getAlertsHistory",
@@ -1384,9 +1402,9 @@
         }
       }
     },
-    "/admin/alerts/check": {
+    "/api/admin/alerts/check": {
       "post": {
-        "tags": ["Admin - Alerts"],
+        "tags": ["管理运维 - 告警"],
         "summary": "手动触发告警检查",
         "description": "手动触发一次告警检查",
         "operationId": "checkAlerts",
@@ -1414,9 +1432,9 @@
         }
       }
     },
-    "/admin/alerts/silence": {
+    "/api/admin/alerts/silence": {
       "post": {
-        "tags": ["Admin - Alerts"],
+        "tags": ["管理运维 - 告警"],
         "summary": "静默告警规则",
         "description": "静默指定的告警规则",
         "operationId": "silenceAlert",
@@ -1462,9 +1480,9 @@
         }
       }
     },
-    "/admin/cache/stats": {
+    "/api/admin/cache/stats": {
       "get": {
-        "tags": ["Admin - Cache"],
+        "tags": ["管理运维 - 缓存"],
         "summary": "获取缓存统计",
         "description": "获取缓存统计信息",
         "operationId": "getCacheStats",
@@ -1492,9 +1510,9 @@
         }
       }
     },
-    "/admin/cache/warmup": {
+    "/api/admin/cache/warmup": {
       "post": {
-        "tags": ["Admin - Cache"],
+        "tags": ["管理运维 - 缓存"],
         "summary": "缓存预热",
         "description": "触发缓存预热任务（后台运行）",
         "operationId": "cacheWarmup",
@@ -1533,9 +1551,9 @@
         }
       }
     },
-    "/admin/cache/clear-l1": {
+    "/api/admin/cache/clear-l1": {
       "post": {
-        "tags": ["Admin - Cache"],
+        "tags": ["管理运维 - 缓存"],
         "summary": "清除 L1 缓存",
         "description": "清除本地 L1 缓存",
         "operationId": "clearL1Cache",
@@ -1565,9 +1583,9 @@
         }
       }
     },
-    "/admin/circuit-breakers": {
+    "/api/admin/circuit-breakers": {
       "get": {
-        "tags": ["Admin"],
+        "tags": ["管理运维"],
         "summary": "获取熔断器状态",
         "description": "获取所有熔断器的当前状态",
         "operationId": "getCircuitBreakers",
@@ -1595,9 +1613,9 @@
         }
       }
     },
-    "/admin/circuit-breakers/reset": {
+    "/api/admin/circuit-breakers/reset": {
       "post": {
-        "tags": ["Admin"],
+        "tags": ["管理运维"],
         "summary": "重置所有熔断器",
         "description": "重置所有熔断器状态",
         "operationId": "resetCircuitBreakers",
@@ -1627,9 +1645,9 @@
         }
       }
     },
-    "/admin/system/status": {
+    "/api/admin/system/status": {
       "get": {
-        "tags": ["Admin"],
+        "tags": ["管理运维"],
         "summary": "获取系统综合状态",
         "description": "获取系统综合状态，包括指标、缓存、告警、熔断器和调度器信息",
         "operationId": "getSystemStatus",
@@ -1685,9 +1703,9 @@
         }
       }
     },
-    "/admin/scheduler/status": {
+    "/api/admin/scheduler/status": {
       "get": {
-        "tags": ["Admin - Scheduler"],
+        "tags": ["管理运维 - 调度器"],
         "summary": "获取调度器状态",
         "description": "获取调度器运行状态详情",
         "operationId": "getSchedulerStatus",
@@ -1726,9 +1744,9 @@
         }
       }
     },
-    "/admin/scheduler/pause": {
+    "/api/admin/scheduler/pause": {
       "post": {
-        "tags": ["Admin - Scheduler"],
+        "tags": ["管理运维 - 调度器"],
         "summary": "暂停调度器",
         "description": "暂停调度器运行",
         "operationId": "pauseScheduler",
@@ -1759,9 +1777,9 @@
         }
       }
     },
-    "/admin/scheduler/resume": {
+    "/api/admin/scheduler/resume": {
       "post": {
-        "tags": ["Admin - Scheduler"],
+        "tags": ["管理运维 - 调度器"],
         "summary": "恢复调度器",
         "description": "恢复调度器运行",
         "operationId": "resumeScheduler",
@@ -1792,9 +1810,9 @@
         }
       }
     },
-    "/admin/tasks/cancel-all": {
+    "/api/admin/tasks/cancel-all": {
       "post": {
-        "tags": ["Admin"],
+        "tags": ["管理运维"],
         "summary": "取消所有后台任务",
         "description": "取消所有正在运行的后台采集任务",
         "operationId": "cancelAllTasks",
@@ -1828,9 +1846,9 @@
         }
       }
     },
-    "/admin/data/purge": {
+    "/api/admin/data/purge": {
       "post": {
-        "tags": ["Admin - Data"],
+        "tags": ["管理运维 - 数据"],
         "summary": "清除所有数据",
         "description": "清除所有采集数据和缓存（需要确认），支持按目标清除（mongodb/redis/l1）",
         "operationId": "purgeData",
@@ -1900,7 +1918,7 @@
     },
     "/api/sync-tasks/today": {
       "get": {
-        "tags": ["SyncTasks"],
+        "tags": ["同步任务"],
         "summary": "获取今日同步任务",
         "description": "获取今日的同步任务列表",
         "operationId": "getSyncTasksToday",
@@ -1932,7 +1950,7 @@
     },
     "/api/sync-tasks/{log_id}": {
       "get": {
-        "tags": ["SyncTasks"],
+        "tags": ["同步任务"],
         "summary": "获取同步任务详情",
         "description": "按 ID 获取单个同步任务详情",
         "operationId": "getSyncTaskDetail",

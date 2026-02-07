@@ -30,7 +30,7 @@ if _env_path.exists():
                     key, _, value = line.partition("=")
                     os.environ.setdefault(key.strip(), value.strip())
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # ---------------------------------------------------------------------------
@@ -53,10 +53,12 @@ from .api import (
     auth_routes,
     category_routes,
     mengla_routes,
+    webhook_routes,
     panel_routes,
     admin_routes,
     sync_task_routes,
 )
+from .api.compat import compat_router
 from .middleware.error_handler import register_error_handlers
 from .infra.database import init_db_events
 from .infra.alerting import init_default_notifiers
@@ -86,14 +88,20 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# 注册路由模块
+# 注册路由模块 — 统一 /api 前缀
 # ---------------------------------------------------------------------------
-app.include_router(auth_routes.router)
-app.include_router(category_routes.router)
-app.include_router(mengla_routes.router)
-app.include_router(panel_routes.router)
-app.include_router(admin_routes.router)
-app.include_router(sync_task_routes.router)
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_routes.router,      prefix="/auth",        tags=["认证"])
+api_router.include_router(mengla_routes.router,     prefix="/data/mengla", tags=["MengLa 数据"])
+api_router.include_router(category_routes.router,   prefix="/data",        tags=["类目数据"])
+api_router.include_router(webhook_routes.router,    prefix="/webhook",     tags=["Webhook"])
+api_router.include_router(panel_routes.router,      prefix="/panel",       tags=["面板配置"])
+api_router.include_router(admin_routes.router,      prefix="/admin",       tags=["管理运维"])
+api_router.include_router(sync_task_routes.router,  prefix="/sync-tasks",  tags=["同步任务"])
+app.include_router(api_router)
+
+# 旧路径兼容重定向（/panel/*, /admin/* → /api/panel/*, /api/admin/*）
+app.include_router(compat_router)
 
 # ---------------------------------------------------------------------------
 # 注册全局异常处理

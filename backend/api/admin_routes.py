@@ -7,8 +7,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..core.auth import require_auth
-from ..core.domain import VALID_ACTIONS, query_mengla
+from ..core.domain import VALID_ACTIONS
 from ..core.queue import create_crawl_job
 from ..infra import database
 from ..infra.cache import get_cache_manager, warmup_cache
@@ -19,7 +18,7 @@ from ..utils.category import get_all_valid_cat_ids
 from ..utils.period import period_keys_in_range
 from ..utils.config import COLLECTION_NAME
 from ..tools.backfill import backfill_data
-from .deps import require_panel_admin
+from .deps import require_admin
 
 router = APIRouter(tags=["Admin"])
 
@@ -73,7 +72,7 @@ class PurgeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # 萌拉数据状态查询
 # ---------------------------------------------------------------------------
-@router.post("/admin/mengla/status")
+@router.post("/mengla/status", dependencies=[Depends(require_admin)])
 async def get_mengla_status(body: MengLaStatusRequest):
     """
     管理接口：查询指定 catId（可选）+ 时间范围 + 颗粒度 下，
@@ -137,7 +136,7 @@ async def get_mengla_status(body: MengLaStatusRequest):
 # ---------------------------------------------------------------------------
 # 全量爬取任务
 # ---------------------------------------------------------------------------
-@router.post("/admin/mengla/enqueue-full-crawl", dependencies=[Depends(require_panel_admin)])
+@router.post("/mengla/enqueue-full-crawl", dependencies=[Depends(require_admin)])
 async def enqueue_full_crawl(body: EnqueueFullCrawlRequest):
     """Create a queue-based full crawl job."""
     try:
@@ -181,7 +180,7 @@ async def enqueue_full_crawl(body: EnqueueFullCrawlRequest):
 # ---------------------------------------------------------------------------
 # 历史补录
 # ---------------------------------------------------------------------------
-@router.post("/admin/backfill")
+@router.post("/backfill", dependencies=[Depends(require_admin)])
 async def trigger_backfill(payload: BackfillRequest, tasks: BackgroundTasks):
     """历史补录接口：前端调用后立即返回，补录任务在后台运行。"""
     try:
@@ -210,13 +209,13 @@ async def trigger_backfill(payload: BackfillRequest, tasks: BackgroundTasks):
 # ---------------------------------------------------------------------------
 # 监控指标
 # ---------------------------------------------------------------------------
-@router.get("/admin/metrics", dependencies=[Depends(require_panel_admin)])
+@router.get("/metrics", dependencies=[Depends(require_admin)])
 async def get_metrics():
     """获取采集指标统计"""
     return await get_current_metrics()
 
 
-@router.get("/admin/metrics/latency", dependencies=[Depends(require_panel_admin)])
+@router.get("/metrics/latency", dependencies=[Depends(require_admin)])
 async def get_latency_stats():
     """获取延迟百分位统计"""
     collector = get_metrics_collector()
@@ -226,7 +225,7 @@ async def get_latency_stats():
 # ---------------------------------------------------------------------------
 # 告警
 # ---------------------------------------------------------------------------
-@router.get("/admin/alerts", dependencies=[Depends(require_panel_admin)])
+@router.get("/alerts", dependencies=[Depends(require_admin)])
 async def get_alerts():
     """获取当前活跃告警"""
     manager = get_alert_manager()
@@ -236,20 +235,20 @@ async def get_alerts():
     }
 
 
-@router.get("/admin/alerts/history", dependencies=[Depends(require_panel_admin)])
+@router.get("/alerts/history", dependencies=[Depends(require_admin)])
 async def get_alert_history(limit: int = 100):
     """获取告警历史"""
     manager = get_alert_manager()
     return await manager.get_alert_history(limit)
 
 
-@router.post("/admin/alerts/check", dependencies=[Depends(require_panel_admin)])
+@router.post("/alerts/check", dependencies=[Depends(require_admin)])
 async def check_alerts():
     """手动触发告警检查"""
     return await run_alert_check()
 
 
-@router.post("/admin/alerts/silence", dependencies=[Depends(require_panel_admin)])
+@router.post("/alerts/silence", dependencies=[Depends(require_admin)])
 async def silence_alert_rule(body: SilenceRuleRequest):
     """静默某个告警规则"""
     manager = get_alert_manager()
@@ -262,14 +261,14 @@ async def silence_alert_rule(body: SilenceRuleRequest):
 # ---------------------------------------------------------------------------
 # 缓存
 # ---------------------------------------------------------------------------
-@router.get("/admin/cache/stats", dependencies=[Depends(require_panel_admin)])
+@router.get("/cache/stats", dependencies=[Depends(require_admin)])
 async def get_cache_stats():
     """获取缓存统计"""
     cache_manager = get_cache_manager()
     return cache_manager.get_stats()
 
 
-@router.post("/admin/cache/warmup", dependencies=[Depends(require_panel_admin)])
+@router.post("/cache/warmup", dependencies=[Depends(require_admin)])
 async def trigger_cache_warmup(body: CacheWarmupRequest, tasks: BackgroundTasks):
     """触发缓存预热"""
     tasks.add_task(
@@ -282,7 +281,7 @@ async def trigger_cache_warmup(body: CacheWarmupRequest, tasks: BackgroundTasks)
     return {"message": "Cache warmup started", "limit": body.limit}
 
 
-@router.post("/admin/cache/clear-l1", dependencies=[Depends(require_panel_admin)])
+@router.post("/cache/clear-l1", dependencies=[Depends(require_admin)])
 async def clear_l1_cache():
     """清空 L1 本地缓存"""
     cache_manager = get_cache_manager()
@@ -293,14 +292,14 @@ async def clear_l1_cache():
 # ---------------------------------------------------------------------------
 # 熔断器
 # ---------------------------------------------------------------------------
-@router.get("/admin/circuit-breakers", dependencies=[Depends(require_panel_admin)])
+@router.get("/circuit-breakers", dependencies=[Depends(require_admin)])
 async def get_circuit_breakers():
     """获取熔断器状态"""
     manager = get_circuit_manager()
     return manager.get_all_stats()
 
 
-@router.post("/admin/circuit-breakers/reset", dependencies=[Depends(require_panel_admin)])
+@router.post("/circuit-breakers/reset", dependencies=[Depends(require_admin)])
 async def reset_circuit_breakers():
     """重置所有熔断器"""
     manager = get_circuit_manager()
@@ -311,7 +310,7 @@ async def reset_circuit_breakers():
 # ---------------------------------------------------------------------------
 # 系统状态
 # ---------------------------------------------------------------------------
-@router.get("/admin/system/status", dependencies=[Depends(require_panel_admin)])
+@router.get("/system/status", dependencies=[Depends(require_admin)])
 async def get_system_status():
     """获取系统综合状态"""
     from ..main import scheduler as _scheduler
@@ -341,7 +340,7 @@ async def get_system_status():
 # ---------------------------------------------------------------------------
 # 调度器控制
 # ---------------------------------------------------------------------------
-@router.get("/admin/scheduler/status", dependencies=[Depends(require_panel_admin)])
+@router.get("/scheduler/status", dependencies=[Depends(require_admin)])
 async def scheduler_status():
     """获取调度器运行状态"""
     from ..main import scheduler as _scheduler, _background_tasks
@@ -365,7 +364,7 @@ async def scheduler_status():
     }
 
 
-@router.post("/admin/scheduler/pause", dependencies=[Depends(require_panel_admin)])
+@router.post("/scheduler/pause", dependencies=[Depends(require_admin)])
 async def scheduler_pause():
     """暂停调度器"""
     from ..main import scheduler as _scheduler
@@ -376,7 +375,7 @@ async def scheduler_pause():
     return {"message": "scheduler paused", "paused": True}
 
 
-@router.post("/admin/scheduler/resume", dependencies=[Depends(require_panel_admin)])
+@router.post("/scheduler/resume", dependencies=[Depends(require_admin)])
 async def scheduler_resume():
     """恢复调度器"""
     from ..main import scheduler as _scheduler
@@ -390,7 +389,7 @@ async def scheduler_resume():
 # ---------------------------------------------------------------------------
 # 后台任务控制
 # ---------------------------------------------------------------------------
-@router.post("/admin/tasks/cancel-all", dependencies=[Depends(require_panel_admin)])
+@router.post("/tasks/cancel-all", dependencies=[Depends(require_admin)])
 async def cancel_all_background_tasks():
     """取消所有运行中的后台采集任务。"""
     from ..main import _background_tasks
@@ -447,7 +446,7 @@ async def cancel_all_background_tasks():
 # ---------------------------------------------------------------------------
 # 数据清空
 # ---------------------------------------------------------------------------
-@router.post("/admin/data/purge", dependencies=[Depends(require_panel_admin)])
+@router.post("/data/purge", dependencies=[Depends(require_admin)])
 async def purge_all_data(body: PurgeRequest):
     """
     清空采集数据和缓存。

@@ -10,7 +10,7 @@ from ..core.sync_task_log import (
     cancel_sync_task,
     delete_sync_task,
 )
-from .deps import require_panel_admin
+from .deps import require_admin
 
 router = APIRouter(tags=["Sync Tasks"])
 
@@ -25,14 +25,14 @@ class DeleteSyncTaskBody(BaseModel):
 # ---------------------------------------------------------------------------
 # 路由
 # ---------------------------------------------------------------------------
-@router.get("/api/sync-tasks/today", dependencies=[Depends(require_panel_admin)])
+@router.get("/today", dependencies=[Depends(require_admin)])
 async def get_today_sync_tasks_api():
     """获取当天的同步任务列表。"""
     tasks = await get_today_sync_tasks()
     return {"tasks": tasks}
 
 
-@router.get("/api/sync-tasks/{log_id}", dependencies=[Depends(require_panel_admin)])
+@router.get("/{log_id}", dependencies=[Depends(require_admin)])
 async def get_sync_task_detail_api(log_id: str):
     """获取单个同步任务的详情。"""
     task = await get_sync_task_detail(log_id)
@@ -41,7 +41,7 @@ async def get_sync_task_detail_api(log_id: str):
     return task
 
 
-@router.post("/api/sync-tasks/{log_id}/cancel", dependencies=[Depends(require_panel_admin)])
+@router.post("/{log_id}/cancel", dependencies=[Depends(require_admin)])
 async def cancel_sync_task_api(log_id: str):
     """取消一个运行中的同步任务。"""
     result = await cancel_sync_task(log_id)
@@ -50,7 +50,7 @@ async def cancel_sync_task_api(log_id: str):
     return result
 
 
-@router.delete("/api/sync-tasks/{log_id}", dependencies=[Depends(require_panel_admin)])
+@router.delete("/{log_id}", dependencies=[Depends(require_admin)])
 async def delete_sync_task_api(log_id: str, body: Optional[DeleteSyncTaskBody] = None):
     """
     删除一个同步任务日志。

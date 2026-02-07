@@ -21,7 +21,7 @@ export interface MengLaStatusResponse {
 export async function fetchMenglaStatus(
   body: MengLaStatusRequest
 ): Promise<MengLaStatusResponse> {
-  const resp = await authFetch(`${API_BASE}/admin/mengla/status`, {
+  const resp = await authFetch(`${API_BASE}/api/admin/mengla/status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -51,7 +51,7 @@ export interface PanelDataFillResponse {
 export async function submitPanelDataFill(
   body: PanelDataFillRequest
 ): Promise<PanelDataFillResponse> {
-  const resp = await authFetch(`${API_BASE}/panel/data/fill`, {
+  const resp = await authFetch(`${API_BASE}/api/panel/data/fill`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -83,7 +83,7 @@ export interface TaskStartedResponse {
  * GET /panel/tasks
  */
 export async function fetchPanelTasks(): Promise<PanelTask[]> {
-  const resp = await authFetch(`${API_BASE}/panel/tasks`);
+  const resp = await authFetch(`${API_BASE}/api/panel/tasks`);
   if (!resp.ok) {
     throw new Error(`Failed to load panel tasks: ${resp.status}`);
   }
@@ -95,7 +95,7 @@ export async function fetchPanelTasks(): Promise<PanelTask[]> {
  * POST /panel/tasks/{task_id}/run
  */
 export async function runPanelTask(taskId: string): Promise<TaskStartedResponse> {
-  const resp = await authFetch(`${API_BASE}/panel/tasks/${taskId}/run`, {
+  const resp = await authFetch(`${API_BASE}/api/panel/tasks/${taskId}/run`, {
     method: "POST",
   });
   if (!resp.ok) {
@@ -120,21 +120,21 @@ export interface SchedulerStatus {
 
 /** 获取调度器状态 */
 export async function fetchSchedulerStatus(): Promise<SchedulerStatus> {
-  const resp = await authFetch(`${API_BASE}/admin/scheduler/status`);
+  const resp = await authFetch(`${API_BASE}/api/admin/scheduler/status`);
   if (!resp.ok) throw new Error(`Failed to get scheduler status: ${resp.status}`);
   return resp.json();
 }
 
 /** 暂停调度器 */
 export async function pauseScheduler(): Promise<{ message: string }> {
-  const resp = await authFetch(`${API_BASE}/admin/scheduler/pause`, { method: "POST" });
+  const resp = await authFetch(`${API_BASE}/api/admin/scheduler/pause`, { method: "POST" });
   if (!resp.ok) throw new Error(`Failed to pause scheduler: ${resp.status}`);
   return resp.json();
 }
 
 /** 恢复调度器 */
 export async function resumeScheduler(): Promise<{ message: string }> {
-  const resp = await authFetch(`${API_BASE}/admin/scheduler/resume`, { method: "POST" });
+  const resp = await authFetch(`${API_BASE}/api/admin/scheduler/resume`, { method: "POST" });
   if (!resp.ok) throw new Error(`Failed to resume scheduler: ${resp.status}`);
   return resp.json();
 }
@@ -147,7 +147,7 @@ export async function cancelAllTasks(): Promise<{
   cancelled_crawl_jobs: number;
   cancelled_crawl_subtasks: number;
 }> {
-  const resp = await authFetch(`${API_BASE}/admin/tasks/cancel-all`, { method: "POST" });
+  const resp = await authFetch(`${API_BASE}/api/admin/tasks/cancel-all`, { method: "POST" });
   if (!resp.ok) throw new Error(`Failed to cancel tasks: ${resp.status}`);
   return resp.json();
 }
@@ -156,7 +156,7 @@ export async function cancelAllTasks(): Promise<{
 export async function purgeAllData(
   targets: string[] = ["mongodb", "redis", "l1"]
 ): Promise<{ message: string; results: Record<string, unknown> }> {
-  const resp = await authFetch(`${API_BASE}/admin/data/purge`, {
+  const resp = await authFetch(`${API_BASE}/api/admin/data/purge`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ confirm: true, targets }),

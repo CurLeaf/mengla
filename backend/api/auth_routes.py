@@ -28,7 +28,7 @@ class GenerateTokenRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # 路由
 # ---------------------------------------------------------------------------
-@router.post("/api/auth/login")
+@router.post("/login")
 async def login(body: LoginRequest):
     """登录接口：验证用户名密码，返回 JWT token"""
     if not authenticate_user(body.username, body.password):
@@ -37,14 +37,14 @@ async def login(body: LoginRequest):
     return {"token": token, "username": body.username}
 
 
-@router.post("/api/auth/generate-token", dependencies=[Depends(require_auth)])
+@router.post("/generate-token", dependencies=[Depends(require_auth)])
 async def generate_api_token_endpoint(body: GenerateTokenRequest):
     """生成长期 API Token（需要先登录）"""
     token = create_api_token(label=body.label, expires_hours=body.expires_hours)
     return {"token": token, "label": body.label, "expires_hours": body.expires_hours}
 
 
-@router.get("/api/auth/me", dependencies=[Depends(require_auth)])
+@router.get("/me", dependencies=[Depends(require_auth)])
 async def auth_me(payload: dict = Depends(require_auth)):
     """验证当前 token 是否有效，返回用户信息"""
     return {"username": payload.get("sub"), "payload": payload}

@@ -144,9 +144,18 @@ TREND_ACTION = "industryTrendRange"
 # ==============================================================================
 # 统一采集入口（替代原来的 4 个独立函数）
 # ==============================================================================
+_GRANULARITY_TASK_NAMES: Dict[str, str] = {
+    "day": "每日采集",
+    "month": "月度采集",
+    "quarter": "季度采集",
+    "year": "年度采集",
+}
+
+
 async def run_period_collect(
     granularity: str,
     target_date: Optional[datetime] = None,
+    trigger: str = TRIGGER_SCHEDULED,
 ) -> Dict[str, Any]:
     """
     统一采集入口，granularity = day | month | quarter | year。
@@ -162,50 +171,92 @@ async def run_period_collect(
     period_key = periods[granularity]
     interval = get_collect_interval()
 
-    logger.info("Starting %s collect for period_key=%s", granularity, period_key)
+    # 预计任务数：非趋势接口 (cats * 4) + 趋势接口 (cats * 1)
+    total_tasks = len(top_cat_ids) * (len(NON_TREND_ACTIONS) + 1)
+    task_id = f"{granularity}_collect"
+    task_name = _GRANULARITY_TASK_NAMES.get(granularity, f"{granularity} 采集")
 
-    # 1) 非趋势接口
-    for cat_id in top_cat_ids:
-        for action in NON_TREND_ACTIONS:
+    log_id = await create_sync_task_log(
+        task_id=task_id,
+        task_name=task_name,
+        total=total_tasks,
+        trigger=trigger,
+    )
+
+    logger.info("Starting %s collect for period_key=%s log_id=%s", granularity, period_key, log_id)
+
+    try:
+        # 1) 非趋势接口
+        for cat_id in top_cat_ids:
+            if is_cancelled(log_id):
+                break
+            for action in NON_TREND_ACTIONS:
+                if is_cancelled(log_id):
+                    break
+                stats["total"] += 1
+                success = await _collect_with_retry(
+                    action=action,
+                    cat_id=cat_id,
+                    date_type=granularity,
+                    timest=period_key,
+                    granularity=granularity,
+                )
+                if success:
+                    stats["success"] += 1
+                    await update_sync_task_progress(log_id, completed_delta=1)
+                else:
+                    stats["failed"] += 1
+                    await update_sync_task_progress(log_id, failed_delta=1)
+                await asyncio.sleep(random.uniform(interval * 0.5, interval * 1.5))
+
+        if is_cancelled(log_id):
+            _unmark_cancelled(log_id)
+            logger.info("%s collect cancelled: %s", granularity.capitalize(), stats)
+            return stats
+
+        # 2) 趋势接口：按年范围补齐
+        year_str = str(target.year)
+        start_year, end_year = period_to_date_range("year", year_str)
+        date_type_map = {"day": "DAY", "month": "MONTH", "quarter": "QUARTERLY_FOR_YEAR", "year": "YEAR"}
+        trend_date_type = date_type_map.get(granularity, "DAY")
+
+        for cat_id in top_cat_ids:
+            if is_cancelled(log_id):
+                break
             stats["total"] += 1
             success = await _collect_with_retry(
-                action=action,
+                action=TREND_ACTION,
                 cat_id=cat_id,
-                date_type=granularity,
-                timest=period_key,
+                date_type=trend_date_type,
+                timest="",
+                star_range=start_year,
+                end_range=end_year,
                 granularity=granularity,
             )
             if success:
                 stats["success"] += 1
+                await update_sync_task_progress(log_id, completed_delta=1)
             else:
                 stats["failed"] += 1
+                await update_sync_task_progress(log_id, failed_delta=1)
             await asyncio.sleep(random.uniform(interval * 0.5, interval * 1.5))
 
-    # 2) 趋势接口：按年范围补齐
-    year_str = str(target.year)
-    start_year, end_year = period_to_date_range("year", year_str)
-    date_type_map = {"day": "DAY", "month": "MONTH", "quarter": "QUARTERLY_FOR_YEAR", "year": "YEAR"}
-    trend_date_type = date_type_map.get(granularity, "DAY")
+        if is_cancelled(log_id):
+            _unmark_cancelled(log_id)
+            logger.info("%s collect cancelled: %s", granularity.capitalize(), stats)
+            return stats
 
-    for cat_id in top_cat_ids:
-        stats["total"] += 1
-        success = await _collect_with_retry(
-            action=TREND_ACTION,
-            cat_id=cat_id,
-            date_type=trend_date_type,
-            timest="",
-            star_range=start_year,
-            end_range=end_year,
-            granularity=granularity,
-        )
-        if success:
-            stats["success"] += 1
-        else:
-            stats["failed"] += 1
-        await asyncio.sleep(random.uniform(interval * 0.5, interval * 1.5))
+        final_status = STATUS_FAILED if stats["failed"] > 0 else STATUS_COMPLETED
+        await finish_sync_task_log(log_id, status=final_status)
 
-    logger.info("%s collect completed: %s", granularity.capitalize(), stats)
-    return stats
+        logger.info("%s collect completed: %s", granularity.capitalize(), stats)
+        return stats
+
+    except Exception as e:
+        _unmark_cancelled(log_id)
+        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=str(e))
+        logger.error("%s collect failed: %s", granularity.capitalize(), e)
+        raise
 
 
 def _compute_target_date(granularity: str) -> datetime:
@@ -285,7 +336,9 @@ async def _collect_with_retry(
 # ==============================================================================
 # 补数检查
 # ==============================================================================
-async def run_backfill_check() -> Dict[str, Any]:
+async def run_backfill_check(
+    trigger: str = TRIGGER_SCHEDULED,
+) -> Dict[str, Any]:
     """检查最近数据是否有缺失，触发补采"""
     from .utils.config import COLLECTION_NAME
 
@@ -298,53 +351,91 @@ async def run_backfill_check() -> Dict[str, Any]:
     top_cat_ids = _get_top_cat_ids_safe()
     interval = get_collect_interval()
 
+    # 检查总数: 2 granularities * cats * 4 actions
+    total_checks = 2 * len(top_cat_ids) * len(NON_TREND_ACTIONS)
+
+    log_id = await create_sync_task_log(
+        task_id="backfill_check",
+        task_name="补数检查",
+        total=total_checks,
+        trigger=trigger,
+    )
+
     stats = {"checked": 0, "missing": 0, "backfilled": 0, "failed": 0}
 
-    logger.info("Starting backfill check")
+    logger.info("Starting backfill check log_id=%s", log_id)
 
     collection = database.mongo_db[COLLECTION_NAME]
 
-    for granularity in ["day", "month"]:
-        period_key = periods[granularity]
+    try:
+        for granularity in ["day", "month"]:
+            period_key = periods[granularity]
 
-        for cat_id in top_cat_ids:
-            for action in NON_TREND_ACTIONS:
-                stats["checked"] += 1
+            for cat_id in top_cat_ids:
+                if is_cancelled(log_id):
+                    break
+                for action in NON_TREND_ACTIONS:
+                    if is_cancelled(log_id):
+                        break
+                    stats["checked"] += 1
 
-                query = {
-                    "action": action,
-                    "cat_id": cat_id or "",
-                    "granularity": granularity,
-                    "period_key": period_key,
-                }
+                    query = {
+                        "action": action,
+                        "cat_id": cat_id or "",
+                        "granularity": granularity,
+                        "period_key": period_key,
+                    }
 
-                try:
-                    doc = await collection.find_one(query)
-                    if doc is None:
-                        stats["missing"] += 1
-                        success = await _collect_with_retry(
-                            action=action,
-                            cat_id=cat_id,
-                            date_type=granularity,
-                            timest=period_key,
-                            granularity=granularity,
-                        )
-                        if success:
-                            stats["backfilled"] += 1
-                        else:
-                            stats["failed"] += 1
-                        await asyncio.sleep(random.uniform(interval * 0.25, interval * 0.75))
-                except Exception as e:
-                    logger.warning("Backfill check error: %s", e)
+                    try:
+                        doc = await collection.find_one(query)
+                        if doc is None:
+                            stats["missing"] += 1
+                            success = await _collect_with_retry(
+                                action=action,
+                                cat_id=cat_id,
+                                date_type=granularity,
+                                timest=period_key,
+                                granularity=granularity,
+                            )
+                            if success:
+                                stats["backfilled"] += 1
+                            else:
+                                stats["failed"] += 1
+                            await asyncio.sleep(random.uniform(interval * 0.25, interval * 0.75))
+                    except Exception as e:
+                        logger.warning("Backfill check error: %s", e)
 
-    logger.info("Backfill check completed: %s", stats)
-    return stats
+                    await update_sync_task_progress(log_id, completed_delta=1)
+                if is_cancelled(log_id):
+                    break
+            if is_cancelled(log_id):
+                break
+
+        if is_cancelled(log_id):
+            _unmark_cancelled(log_id)
+            logger.info("Backfill check cancelled: %s", stats)
+            return stats
+
+        final_status = STATUS_FAILED if stats["failed"] > 0 else STATUS_COMPLETED
+        await finish_sync_task_log(log_id, status=final_status)
+
+        logger.info("Backfill check completed: %s", stats)
+        return stats
+
+    except Exception as e:
+        _unmark_cancelled(log_id)
+        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=str(e))
+        logger.error("Backfill check failed: %s", e)
+        raise
 
 
 # ==============================================================================
 # 全量多颗粒度补齐
 # ==============================================================================
-async def run_mengla_jobs(target_date: Optional[datetime] = None) -> None:
+async def run_mengla_jobs(
+    target_date: Optional[datetime] = None,
+    trigger: str = TRIGGER_MANUAL,
+) -> None:
     """
     每天凌晨针对 MengLa 的 high / view / trend 三个接口进行补齐：
     - 先计算当日对应的 day/month/quarter/year period_key
@@ -354,20 +445,62 @@ async def run_mengla_jobs(target_date: Optional[datetime] = None) -> None:
     periods = make_period_keys(now)
     top_cat_ids = _get_top_cat_ids_safe()
 
-    for cat_id in top_cat_ids:
-        for action, granularities in MENG_LA_ACTIONS.items():
-            for gran in granularities:
-                period_key = periods[gran]
-                await query_mengla(
-                    action=action,
-                    product_id="",
-                    catId=cat_id,
-                    dateType=gran,
-                    timest=period_key,
-                    starRange="",
-                    endRange="",
-                    extra=None,
-                )
+    # 总任务数: cats * 5 actions * 4 granularities
+    total_tasks = len(top_cat_ids) * sum(len(g) for g in MENG_LA_ACTIONS.values())
+
+    log_id = await create_sync_task_log(
+        task_id="mengla_single_day",
+        task_name="MengLa 单日补齐",
+        total=total_tasks,
+        trigger=trigger,
+    )
+
+    completed = 0
+    failed = 0
+
+    try:
+        for cat_id in top_cat_ids:
+            if is_cancelled(log_id):
+                break
+            for action, granularities in MENG_LA_ACTIONS.items():
+                if is_cancelled(log_id):
+                    break
+                for gran in granularities:
+                    if is_cancelled(log_id):
+                        break
+                    period_key = periods[gran]
+                    try:
+                        await query_mengla(
+                            action=action,
+                            product_id="",
+                            catId=cat_id,
+                            dateType=gran,
+                            timest=period_key,
+                            starRange="",
+                            endRange="",
+                            extra=None,
+                        )
+                        completed += 1
+                        await update_sync_task_progress(log_id, completed_delta=1)
+                    except Exception as e:
+                        failed += 1
+                        await update_sync_task_progress(log_id, failed_delta=1)
+                        logger.warning("MengLa single day error: action=%s cat=%s gran=%s err=%s", action, cat_id, gran, e)
+
+        if is_cancelled(log_id):
+            _unmark_cancelled(log_id)
+            logger.info("MengLa single day cancelled: completed=%d failed=%d", completed, failed)
+            return
+
+        final_status = STATUS_FAILED if failed > 0 else STATUS_COMPLETED
+        await finish_sync_task_log(log_id, status=final_status)
+        logger.info("MengLa single day completed: completed=%d failed=%d", completed, failed)
+
+    except Exception as e:
+        _unmark_cancelled(log_id)
+        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=str(e))
+        logger.error("MengLa single day failed: %s", e)
+        raise
 
 
 async def run_mengla_granular_jobs(
@@ -631,31 +764,31 @@ PANEL_TASKS: Dict[str, dict] = {
     "mengla_single_day": {
         "name": "MengLa 单日补齐",
         "description": "同上，仅针对当日 period_key 各接口触发一次",
-        "run": run_mengla_jobs,
+        "run": lambda: run_mengla_jobs(trigger=TRIGGER_MANUAL),
     },
     "daily_collect": {
         "name": "每日主采集",
         "description": "采集前一天的 day 颗粒度数据",
-        "run": lambda: run_period_collect("day"),
+        "run": lambda: run_period_collect("day", trigger=TRIGGER_MANUAL),
     },
     "monthly_collect": {
         "name": "月度采集",
         "description": "采集上月的 month 颗粒度数据",
-        "run": lambda: run_period_collect("month"),
+        "run": lambda: run_period_collect("month", trigger=TRIGGER_MANUAL),
     },
     "quarterly_collect": {
         "name": "季度采集",
         "description": "采集上季的 quarter 颗粒度数据",
-        "run": lambda: run_period_collect("quarter"),
+        "run": lambda: run_period_collect("quarter", trigger=TRIGGER_MANUAL),
     },
     "yearly_collect": {
         "name": "年度采集",
         "description": "采集上年的 year 颗粒度数据",
-        "run": lambda: run_period_collect("year"),
+        "run": lambda: run_period_collect("year", trigger=TRIGGER_MANUAL),
     },
     "backfill_check": {
         "name": "补数检查",
         "description": "检查最近数据是否有缺失，触发补采",
-        "run": run_backfill_check,
+        "run": lambda: run_backfill_check(trigger=TRIGGER_MANUAL),
     },
 }

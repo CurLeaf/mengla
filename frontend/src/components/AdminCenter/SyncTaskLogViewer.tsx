@@ -72,7 +72,8 @@ function StatusBadge({ status }: { status: SyncTaskLog["status"] }) {
       label: "已取消",
     },
   };
-  const config = configMap[status];
+  const fallback = { bg: "bg-gray-500/20", text: "text-gray-400", label: status };
+  const config = configMap[status] ?? fallback;
 
   return (
     <span

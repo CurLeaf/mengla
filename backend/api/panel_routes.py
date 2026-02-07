@@ -6,13 +6,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..core.auth import require_auth
 from ..core.domain import VALID_ACTIONS, query_mengla
 from ..infra import database
 from ..utils.period import period_keys_in_range
 from ..utils.dashboard import get_panel_config, update_panel_config
 from ..scheduler import PANEL_TASKS
-from .deps import require_panel_admin
+from .deps import require_admin
 
 router = APIRouter(tags=["Panel"])
 
@@ -112,20 +111,20 @@ async def fill_mengla_missing(
 # ---------------------------------------------------------------------------
 # 路由
 # ---------------------------------------------------------------------------
-@router.get("/panel/config")
+@router.get("/config")
 async def panel_get_config():
     """Get current industry panel config (modules + layout). Public."""
     return get_panel_config()
 
 
-@router.put("/panel/config", dependencies=[Depends(require_panel_admin)])
+@router.put("/config", dependencies=[Depends(require_admin)])
 async def panel_put_config(body: PanelConfigUpdate):
     """Update industry panel config (modules and/or layout). Persisted to JSON."""
     updated = update_panel_config(modules=body.modules, layout=body.layout)
     return updated
 
 
-@router.get("/panel/tasks", dependencies=[Depends(require_panel_admin)])
+@router.get("/tasks", dependencies=[Depends(require_admin)])
 async def panel_list_tasks():
     """List industry panel related tasks (for admin center)."""
     return [
@@ -134,7 +133,7 @@ async def panel_list_tasks():
     ]
 
 
-@router.post("/panel/tasks/{task_id}/run", dependencies=[Depends(require_panel_admin)])
+@router.post("/tasks/{task_id}/run", dependencies=[Depends(require_admin)])
 async def panel_run_task(task_id: str):
     """Trigger a panel task by id. Runs in background."""
     # 导入在此处避免循环依赖 — _track_task 留在 main.py
@@ -146,7 +145,7 @@ async def panel_run_task(task_id: str):
     return {"message": "task started", "task_id": task_id}
 
 
-@router.post("/panel/data/fill", dependencies=[Depends(require_panel_admin)])
+@router.post("/data/fill", dependencies=[Depends(require_admin)])
 async def panel_data_fill(body: PanelDataFillRequest, tasks: BackgroundTasks):
     """Submit background task to fill missing MengLa data for the given range."""
     gran = (body.granularity or "").lower().strip()

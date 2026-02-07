@@ -13,7 +13,7 @@ router = APIRouter(tags=["Categories"])
 logger = logging.getLogger("mengla-backend")
 
 
-@router.get("/api/categories", dependencies=[Depends(require_auth)])
+@router.get("/categories", dependencies=[Depends(require_auth)])
 async def get_categories():
     """
     返回类目树，数据来源于 backend/category.json。
@@ -22,7 +22,7 @@ async def get_categories():
     return get_all_categories()
 
 
-@router.get("/api/industry/daily", dependencies=[Depends(require_auth)])
+@router.get("/industry/daily", dependencies=[Depends(require_auth)])
 async def get_industry_daily(date: str):
     """
     示例查询接口：按天返回某个 period_key 的所有行业数据。
