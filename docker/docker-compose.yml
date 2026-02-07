@@ -21,10 +21,8 @@ services:
     image: docker.cnb.cool/qzsyzn/docker/mengla-backend:latest
     container_name: industry-backend
     restart: unless-stopped
-    environment:
-      - MONGO_URI=mongodb://mongodb:27017
-      - MONGO_DB=industry_monitor
-      - REDIS_URI=redis://redis:6379/0
+    env_file:
+      - .env.production
     depends_on:
       - mongodb
       - redis
