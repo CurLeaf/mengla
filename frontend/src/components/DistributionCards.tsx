@@ -1,6 +1,7 @@
 import type { RangeItem, IndustryView } from "../types/mengla";
 import type { PeriodType } from "./RankPeriodSelector";
 import { RankPeriodSelector } from "./RankPeriodSelector";
+import { CardSkeleton, InlineError } from "./LoadingSkeleton";
 
 interface RangeListProps {
   title: string;
@@ -46,6 +47,9 @@ interface DistributionSectionProps {
   distributionTimest?: string;
   onDistributionPeriodChange?: (period: PeriodType) => void;
   onDistributionTimestChange?: (timest: string) => void;
+  isLoading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
 }
 
 export function DistributionSection({
@@ -54,6 +58,9 @@ export function DistributionSection({
   distributionTimest = "",
   onDistributionPeriodChange,
   onDistributionTimestChange,
+  isLoading,
+  error,
+  onRetry,
 }: DistributionSectionProps) {
   const data = industryView?.data ?? {};
   const showSelector =
@@ -79,6 +86,16 @@ export function DistributionSection({
           />
         )}
       </header>
+      {error ? (
+        <InlineError message="加载区间分布数据失败" onRetry={onRetry} />
+      ) : isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <RangeList
           title="销量区间"
@@ -97,6 +114,7 @@ export function DistributionSection({
           items={data.industryBrandRateDtoList}
         />
       </div>
+      )}
     </section>
   );
 }

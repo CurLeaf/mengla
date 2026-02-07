@@ -1,14 +1,23 @@
 import type { HighListRow } from "../types/mengla";
+import { TableSkeleton, InlineError } from "./LoadingSkeleton";
 
 interface HotIndustryTableProps {
   data: HighListRow[];
   title?: string;
+  isLoading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
 }
 
 export function HotIndustryTable({
   data,
   title = "蓝海类目列表",
+  isLoading,
+  error,
+  onRetry,
 }: HotIndustryTableProps) {
+  if (isLoading) return <TableSkeleton title={`加载${title}…`} />;
+
   return (
     <section className="bg-[#0a0a0c]/80 border border-white/10 rounded-2xl shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_18px_45px_rgba(0,0,0,0.7)] overflow-hidden">
       <div className="px-6 pt-4 pb-3 flex items-center justify-between">
@@ -19,6 +28,10 @@ export function HotIndustryTable({
           <h2 className="text-sm font-semibold text-white mt-1">{title}</h2>
         </div>
       </div>
+      {error ? (
+        <InlineError message={`加载${title}失败`} onRetry={onRetry} />
+      ) : (
+      <>
       <div className="overflow-auto max-h-[420px]">
         <table className="min-w-full text-xs text-white/80">
           <thead className="bg-white/[0.03] border-y border-white/[0.08]">
@@ -117,6 +130,8 @@ export function HotIndustryTable({
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </section>
   );
 }

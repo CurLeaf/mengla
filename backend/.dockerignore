@@ -14,5 +14,5 @@ venv
 *.log
 .env.local
 
-# Tools (开发工具，不需要打包)
-tools/
+# Logs & debug
+*.log

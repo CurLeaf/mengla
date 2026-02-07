@@ -9,12 +9,18 @@ import {
   Legend,
 } from "recharts";
 import type { TrendPoint } from "../types/mengla";
+import { ChartSkeleton, InlineError } from "./LoadingSkeleton";
 
 interface TrendChartProps {
   points: TrendPoint[];
+  isLoading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
 }
 
-export function TrendChart({ points }: TrendChartProps) {
+export function TrendChart({ points, isLoading, error, onRetry }: TrendChartProps) {
+  if (isLoading) return <ChartSkeleton />;
+
   const data =
     points?.map((p) => ({
       date: p.timest,
@@ -36,6 +42,9 @@ export function TrendChart({ points }: TrendChartProps) {
           </h2>
         </div>
       </div>
+      {error ? (
+        <InlineError message="加载趋势数据失败" onRetry={onRetry} />
+      ) : (
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
@@ -87,6 +96,7 @@ export function TrendChart({ points }: TrendChartProps) {
           </LineChart>
         </ResponsiveContainer>
       </div>
+      )}
     </section>
   );
 }

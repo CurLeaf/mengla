@@ -28,6 +28,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from .core.auth import (
+    authenticate_user,
+    create_api_token,
+    create_token,
+    require_auth,
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s %(name)s %(message)s",
@@ -324,12 +331,48 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ==============================================================================
+# 认证 API
+# ==============================================================================
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class GenerateTokenRequest(BaseModel):
+    label: str = "api"
+    expires_hours: int = 24 * 365  # 默认 1 年
+
+
+@app.post("/api/auth/login")
+async def login(body: LoginRequest):
+    """登录接口：验证用户名密码，返回 JWT token"""
+    if not authenticate_user(body.username, body.password):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    token = create_token(subject=body.username)
+    return {"token": token, "username": body.username}
+
+
+@app.post("/api/auth/generate-token", dependencies=[Depends(require_auth)])
+async def generate_api_token(body: GenerateTokenRequest):
+    """生成长期 API Token（需要先登录）"""
+    token = create_api_token(label=body.label, expires_hours=body.expires_hours)
+    return {"token": token, "label": body.label, "expires_hours": body.expires_hours}
+
+
+@app.get("/api/auth/me", dependencies=[Depends(require_auth)])
+async def auth_me(payload: dict = Depends(require_auth)):
+    """验证当前 token 是否有效，返回用户信息"""
+    return {"username": payload.get("sub"), "payload": payload}
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
 
 
-@app.get("/api/categories")
+@app.get("/api/categories", dependencies=[Depends(require_auth)])
 async def get_categories():
     """
     返回类目树，数据来源于 backend/category.json。
@@ -338,7 +381,7 @@ async def get_categories():
     return get_all_categories()
 
 
-@app.get("/api/industry/daily")
+@app.get("/api/industry/daily", dependencies=[Depends(require_auth)])
 async def get_industry_daily(date: str):
     """
     示例查询接口：按天返回某个 period_key 的所有行业数据。
@@ -687,7 +730,7 @@ async def mengla_webhook(request: Request):
     return res
 
 
-@app.post("/api/mengla/query")
+@app.post("/api/mengla/query", dependencies=[Depends(require_auth)])
 async def mengla_query(body: MengLaQueryBody):
     """
     统一的萌拉查询接口（蓝海 / 行业区间 / 行业趋势）：
@@ -785,7 +828,7 @@ async def mengla_query(body: MengLaQueryBody):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.post("/api/mengla/high")
+@app.post("/api/mengla/high", dependencies=[Depends(require_auth)])
 async def mengla_high(body: MengLaQueryParamsBody):
     """
     蓝海 Top 行业。参数：dateType、timest、catId（可选）、starRange/endRange。
@@ -793,7 +836,7 @@ async def mengla_high(body: MengLaQueryParamsBody):
     return await _mengla_query_by_action("high", body)
 
 
-@app.post("/api/mengla/hot")
+@app.post("/api/mengla/hot", dependencies=[Depends(require_auth)])
 async def mengla_hot(body: MengLaQueryParamsBody):
     """
     热销 Top 行业。参数：dateType、timest、catId（可选）、starRange/endRange。
@@ -801,7 +844,7 @@ async def mengla_hot(body: MengLaQueryParamsBody):
     return await _mengla_query_by_action("hot", body)
 
 
-@app.post("/api/mengla/chance")
+@app.post("/api/mengla/chance", dependencies=[Depends(require_auth)])
 async def mengla_chance(body: MengLaQueryParamsBody):
     """
     潜力 Top 行业。参数：dateType、timest、catId（可选）、starRange/endRange。
@@ -809,7 +852,7 @@ async def mengla_chance(body: MengLaQueryParamsBody):
     return await _mengla_query_by_action("chance", body)
 
 
-@app.post("/api/mengla/industry-view")
+@app.post("/api/mengla/industry-view", dependencies=[Depends(require_auth)])
 async def mengla_industry_view(body: MengLaQueryParamsBody):
     """
     行业区间/总览（industryViewV2）。参数：dateType、timest、starRange、endRange、catId（可选）。
@@ -817,7 +860,7 @@ async def mengla_industry_view(body: MengLaQueryParamsBody):
     return await _mengla_query_by_action("industryViewV2", body)
 
 
-@app.post("/api/mengla/industry-trend")
+@app.post("/api/mengla/industry-trend", dependencies=[Depends(require_auth)])
 async def mengla_industry_trend(body: MengLaQueryParamsBody):
     """
     行业趋势（industryTrendRange）。参数：dateType、starRange、endRange、catId（可选），timest 可选。

@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+import { authFetch } from "./auth";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 export interface MengLaStatusRequest {
   catId?: string | null;
@@ -19,7 +21,7 @@ export interface MengLaStatusResponse {
 export async function fetchMenglaStatus(
   body: MengLaStatusRequest
 ): Promise<MengLaStatusResponse> {
-  const resp = await fetch(`${API_BASE}/admin/mengla/status`, {
+  const resp = await authFetch(`${API_BASE}/admin/mengla/status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -49,7 +51,7 @@ export interface PanelDataFillResponse {
 export async function submitPanelDataFill(
   body: PanelDataFillRequest
 ): Promise<PanelDataFillResponse> {
-  const resp = await fetch(`${API_BASE}/panel/data/fill`, {
+  const resp = await authFetch(`${API_BASE}/panel/data/fill`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -81,7 +83,7 @@ export interface TaskStartedResponse {
  * GET /panel/tasks
  */
 export async function fetchPanelTasks(): Promise<PanelTask[]> {
-  const resp = await fetch(`${API_BASE}/panel/tasks`);
+  const resp = await authFetch(`${API_BASE}/panel/tasks`);
   if (!resp.ok) {
     throw new Error(`Failed to load panel tasks: ${resp.status}`);
   }
@@ -93,7 +95,7 @@ export async function fetchPanelTasks(): Promise<PanelTask[]> {
  * POST /panel/tasks/{task_id}/run
  */
 export async function runPanelTask(taskId: string): Promise<TaskStartedResponse> {
-  const resp = await fetch(`${API_BASE}/panel/tasks/${taskId}/run`, {
+  const resp = await authFetch(`${API_BASE}/panel/tasks/${taskId}/run`, {
     method: "POST",
   });
   if (!resp.ok) {

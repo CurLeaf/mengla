@@ -1,6 +1,7 @@
 import type { MenglaQueryParams, MenglaQueryResponse } from "../types/mengla";
+import { authFetch } from "./auth";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 /** 萌拉接口依赖采集服务 webhook，首包可能较慢，超时设为 3 分钟 */
 const MENGLA_FETCH_TIMEOUT_MS = 3 * 60 * 1000;
@@ -12,7 +13,7 @@ export async function queryMengla(
   const timeoutId = setTimeout(() => controller.abort(), MENGLA_FETCH_TIMEOUT_MS);
 
   try {
-    const resp = await fetch(`${API_BASE}/api/mengla/query`, {
+    const resp = await authFetch(`${API_BASE}/api/mengla/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
