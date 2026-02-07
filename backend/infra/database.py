@@ -165,6 +165,10 @@ def init_db_events(app: FastAPI) -> None:
         # 确保索引已创建
         await ensure_indexes()
 
+        # 清理上次服务重启时残留的 RUNNING 状态同步任务
+        from ..core.sync_task_log import cleanup_stale_running_tasks
+        await cleanup_stale_running_tasks()
+
     @app.on_event("shutdown")
     async def _shutdown() -> None:
         await disconnect_redis()

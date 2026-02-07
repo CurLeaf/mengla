@@ -367,3 +367,34 @@ async def delete_sync_task(log_id: str, delete_data: bool = False) -> Dict[str, 
         "message": "任务已删除",
         "deleted_data_count": deleted_data_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# 启动时清理：将残留的 RUNNING 状态标记为 FAILED
+# ---------------------------------------------------------------------------
+async def cleanup_stale_running_tasks() -> int:
+    """
+    服务启动时调用：将所有 status=RUNNING 的同步任务标记为 FAILED。
+    这些任务是上一次服务重启/崩溃时未正常结束的"僵尸"任务。
+    
+    Returns:
+        清理的任务数量
+    """
+    if database.mongo_db is None:
+        return 0
+
+    now = datetime.utcnow()
+    result = await database.mongo_db[SYNC_TASK_LOGS].update_many(
+        {"status": STATUS_RUNNING},
+        {"$set": {
+            "status": STATUS_FAILED,
+            "error_message": "任务被中断（服务重启）",
+            "finished_at": now,
+            "updated_at": now,
+        }},
+    )
+
+    count = result.modified_count
+    if count > 0:
+        logger.info("Cleaned up %d stale RUNNING sync task(s) on startup", count)
+    return count

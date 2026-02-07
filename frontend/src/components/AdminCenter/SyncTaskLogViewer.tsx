@@ -8,11 +8,24 @@ import {
 } from "../../services/sync-task-api";
 
 /**
- * 格式化时间为 HH:mm:ss
+ * 将后端返回的 UTC 时间字符串解析为 Date 对象。
+ * 后端使用 datetime.utcnow() 存储，序列化时不带 'Z' 后缀，
+ * 需要手动补充以确保被正确解析为 UTC 时间。
+ */
+function parseUTC(isoString: string): Date {
+  // 如果已有时区信息（Z 或 ±HH:MM）则直接解析，否则追加 Z
+  if (/[Zz]$/.test(isoString) || /[+-]\d{2}:\d{2}$/.test(isoString)) {
+    return new Date(isoString);
+  }
+  return new Date(isoString + "Z");
+}
+
+/**
+ * 格式化时间为 HH:mm:ss（本地时区）
  */
 function formatTime(isoString: string | null): string {
   if (!isoString) return "-";
-  const date = new Date(isoString);
+  const date = parseUTC(isoString);
   return date.toLocaleTimeString("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
@@ -24,8 +37,8 @@ function formatTime(isoString: string | null): string {
  * 计算耗时
  */
 function calcDuration(startedAt: string, finishedAt: string | null): string {
-  const start = new Date(startedAt).getTime();
-  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+  const start = parseUTC(startedAt).getTime();
+  const end = finishedAt ? parseUTC(finishedAt).getTime() : Date.now();
   const diffMs = end - start;
 
   if (diffMs < 0) return "-";

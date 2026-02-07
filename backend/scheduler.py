@@ -10,7 +10,7 @@ import asyncio
 import logging
 import random
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -252,9 +252,10 @@ async def run_period_collect(
         logger.info("%s collect completed: %s", granularity.capitalize(), stats)
         return stats
 
-    except Exception as e:
+    except BaseException as e:
         _unmark_cancelled(log_id)
-        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=str(e))
+        error_msg = "任务被中断（服务重启）" if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt)) else str(e)
+        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=error_msg)
         logger.error("%s collect failed: %s", granularity.capitalize(), e)
         raise
 
@@ -422,9 +423,10 @@ async def run_backfill_check(
         logger.info("Backfill check completed: %s", stats)
         return stats
 
-    except Exception as e:
+    except BaseException as e:
         _unmark_cancelled(log_id)
-        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=str(e))
+        error_msg = "任务被中断（服务重启）" if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt)) else str(e)
+        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=error_msg)
         logger.error("Backfill check failed: %s", e)
         raise
 
@@ -496,9 +498,10 @@ async def run_mengla_jobs(
         await finish_sync_task_log(log_id, status=final_status)
         logger.info("MengLa single day completed: completed=%d failed=%d", completed, failed)
 
-    except Exception as e:
+    except BaseException as e:
         _unmark_cancelled(log_id)
-        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=str(e))
+        error_msg = "任务被中断（服务重启）" if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt)) else str(e)
+        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=error_msg)
         logger.error("MengLa single day failed: %s", e)
         raise
 
@@ -669,9 +672,10 @@ async def run_mengla_granular_jobs(
             now.date(), force_refresh, completed_count, failed_count
         )
 
-    except Exception as e:
+    except BaseException as e:
         _unmark_cancelled(log_id)
-        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=str(e))
+        error_msg = "任务被中断（服务重启）" if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt)) else str(e)
+        await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=error_msg)
         logger.error("Granular jobs failed with unexpected error: %s", e)
         raise
 

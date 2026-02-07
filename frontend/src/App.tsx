@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { authFetch, logout, setUnauthorizedHandler } from "./services/auth";
 import { useCategoryState } from "./hooks/useCategoryState";
 import { API_BASE } from "./constants";
+import { ADMIN_SECTIONS } from "./components/AdminCenter/AdminCenterLayout";
 import type { Category, CategoryChild } from "./types/category";
 
 /* ---------- 常量 ---------- */
@@ -29,7 +30,22 @@ export interface LayoutContext {
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isAdmin = location.pathname === "/admin";
+  // 是否为仪表盘页面（只有 MODES 中定义的路径才算）
+  const isDashboard = useMemo(
+    () => MODES.some((m) => m.path === location.pathname),
+    [location.pathname],
+  );
+
+  /* ---- 管理中心折叠状态 ---- */
+  const [adminExpanded, setAdminExpanded] = useState(() =>
+    location.pathname.startsWith("/admin"),
+  );
+  // 导航到管理中心时自动展开
+  useEffect(() => {
+    if (location.pathname.startsWith("/admin")) {
+      setAdminExpanded(true);
+    }
+  }, [location.pathname]);
 
   /* ---- SPA 路由：注册 401 回调 ---- */
   useEffect(() => {
@@ -59,10 +75,10 @@ export default function App() {
     setFetchTrigger(0);
   }, [location.pathname]);
 
-  // 当前路径对应的 modeKey
+  // 当前路径对应的 modeKey（仅在仪表盘页面匹配）
   const currentModeKey = useMemo(() => {
     const matched = MODES.find((m) => m.path === location.pathname);
-    return matched?.key ?? "overview";
+    return matched?.key ?? null;
   }, [location.pathname]);
 
   const triggerManualCollect = async () => {
@@ -92,7 +108,7 @@ export default function App() {
   };
 
   /* ---- 当前页面标题 ---- */
-  const currentMode = MODES.find((m) => m.key === currentModeKey);
+  const currentMode = currentModeKey ? MODES.find((m) => m.key === currentModeKey) : undefined;
 
   return (
     <div className="h-screen bg-[#050506] text-white relative overflow-hidden flex flex-col">
@@ -114,7 +130,7 @@ export default function App() {
               <span className="text-lg font-semibold bg-gradient-to-b from-white via-white/90 to-white/60 bg-clip-text text-transparent">
                 行业智能面板
               </span>
-              {!isAdmin && (
+              {isDashboard && (
                 <div className="flex items-center gap-1">
                   <select
                     value={collectMode}
@@ -166,18 +182,51 @@ export default function App() {
                 </span>
               </NavLink>
             ))}
+            {/* ---------- 管理中心（可折叠） ---------- */}
             {SHOW_ADMIN_CENTER && (
-              <NavLink
-                to="/admin"
-                className={({ isActive }: { isActive: boolean }) =>
-                  `mt-2 w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors ${
-                    isActive ? "bg-white/10 text-white" : "text-white/65 hover:bg-white/5"
-                  }`
-                }
-              >
-                <span>管理中心</span>
-                <span className="text-[10px] font-mono tracking-[0.2em] text-white/45">ADMIN</span>
-              </NavLink>
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setAdminExpanded((prev) => !prev)}
+                  className={`w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors cursor-pointer ${
+                    location.pathname.startsWith("/admin")
+                      ? "text-white"
+                      : "text-white/65 hover:bg-white/5"
+                  }`}
+                >
+                  <span>管理中心</span>
+                  <svg
+                    className={`w-3 h-3 text-white/45 transition-transform duration-200 ${
+                      adminExpanded ? "rotate-90" : ""
+                    }`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                {adminExpanded && (
+                  <div>
+                    {ADMIN_SECTIONS.map(({ id, path, label }) => (
+                      <NavLink
+                        key={id}
+                        to={path}
+                        className={({ isActive }: { isActive: boolean }) =>
+                          `w-full flex items-center px-5 pl-8 py-2 text-xs transition-colors ${
+                            isActive
+                              ? "bg-white/10 text-white"
+                              : "text-white/55 hover:bg-white/5 hover:text-white/75"
+                          }`
+                        }
+                      >
+                        {label}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
             <NavLink
               to="/token"
@@ -206,7 +255,7 @@ export default function App() {
 
         {/* ---------- 主内容区 ---------- */}
         <main className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
-          {!isAdmin && (
+          {isDashboard && (
             <header className="flex flex-col gap-4 mb-6">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>

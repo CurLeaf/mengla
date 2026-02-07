@@ -1,7 +1,7 @@
 import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 import { Toaster } from "sonner";
 import App from "./App";
 import { AuthGuard } from "./components/AuthGuard";
@@ -58,7 +58,8 @@ const router = createBrowserRouter([
       { path: "high", element: <Suspense fallback={<PageSkeleton />}><HighPage /></Suspense> },
       { path: "hot", element: <Suspense fallback={<PageSkeleton />}><HotPage /></Suspense> },
       { path: "chance", element: <Suspense fallback={<PageSkeleton />}><ChancePage /></Suspense> },
-      { path: "admin", element: <Suspense fallback={<PageSkeleton />}><AdminPage /></Suspense> },
+      { path: "admin", element: <Navigate to="/admin/modules" replace /> },
+      { path: "admin/:section", element: <Suspense fallback={<PageSkeleton />}><AdminPage /></Suspense> },
       { path: "token", element: <Suspense fallback={<PageSkeleton />}><TokenPage /></Suspense> },
     ],
   },
