@@ -1,0 +1,1981 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Industry Monitor API (勐腊数据采集)",
+    "description": "勐腊行业数据监控与采集系统 API。支持行业数据查询、定时采集、缓存管理、告警监控等功能。",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Admin"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "本地开发环境"
+    }
+  ],
+  "tags": [
+    { "name": "Health", "description": "健康检查" },
+    { "name": "Auth", "description": "认证相关接口" },
+    { "name": "Categories", "description": "类目与行业数据" },
+    { "name": "MengLa", "description": "勐腊数据查询" },
+    { "name": "Webhook", "description": "Webhook 回调" },
+    { "name": "Panel", "description": "面板配置与任务" },
+    { "name": "Admin", "description": "管理后台" },
+    { "name": "Admin - Cache", "description": "缓存管理" },
+    { "name": "Admin - Alerts", "description": "告警管理" },
+    { "name": "Admin - Scheduler", "description": "调度器管理" },
+    { "name": "Admin - Data", "description": "数据管理" },
+    { "name": "SyncTasks", "description": "同步任务" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT Bearer Token 认证。通过 /api/auth/login 获取 token。"
+      }
+    },
+    "schemas": {
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": { "type": "string", "description": "用户名", "example": "admin" },
+          "password": { "type": "string", "description": "密码", "example": "password123" }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "description": "JWT Token" },
+          "username": { "type": "string", "description": "用户名" }
+        }
+      },
+      "GenerateTokenRequest": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "default": "api", "description": "Token 标签" },
+          "expires_hours": { "type": "integer", "default": 8760, "description": "过期时间（小时），默认1年" }
+        }
+      },
+      "GenerateTokenResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "description": "生成的长期 Token" },
+          "label": { "type": "string", "description": "Token 标签" },
+          "expires_hours": { "type": "integer", "description": "过期时间（小时）" }
+        }
+      },
+      "MeResponse": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string", "description": "用户名" },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "sub": { "type": "string", "description": "Subject (用户名)" },
+              "iat": { "type": "integer", "description": "签发时间 (Unix timestamp)" },
+              "exp": { "type": "integer", "description": "过期时间 (Unix timestamp)" }
+            }
+          }
+        }
+      },
+      "MengLaQueryBody": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["high", "hot", "chance", "industryViewV2", "industryTrendRange"],
+            "description": "查询动作类型"
+          },
+          "product_id": { "type": "string", "default": "", "description": "产品 ID" },
+          "catId": { "type": "string", "default": "", "description": "类目 ID（需存在于 category.json 中）" },
+          "dateType": {
+            "type": "string",
+            "enum": ["day", "month", "quarter", "year"],
+            "description": "日期粒度"
+          },
+          "timest": { "type": "string", "description": "时间周期 key" },
+          "starRange": { "type": "string", "description": "趋势起始范围" },
+          "endRange": { "type": "string", "description": "趋势结束范围" },
+          "extra": { "type": "object", "description": "额外参数" }
+        }
+      },
+      "MengLaQueryParamsBody": {
+        "type": "object",
+        "properties": {
+          "product_id": { "type": "string", "default": "", "description": "产品 ID" },
+          "catId": { "type": "string", "default": "", "description": "类目 ID" },
+          "dateType": {
+            "type": "string",
+            "enum": ["day", "month", "quarter", "year"],
+            "description": "日期粒度"
+          },
+          "timest": { "type": "string", "description": "时间周期 key" },
+          "starRange": { "type": "string", "description": "趋势起始范围" },
+          "endRange": { "type": "string", "description": "趋势结束范围" },
+          "extra": { "type": "object", "description": "额外参数" }
+        }
+      },
+      "HighItem": {
+        "type": "object",
+        "description": "蓝海行业数据项",
+        "properties": {
+          "catNameCn": { "type": "string", "description": "类目中文名" },
+          "catName": { "type": "string", "description": "类目名称" },
+          "catTag": { "type": "integer", "description": "类目标签" },
+          "catId1": { "type": "string", "description": "一级类目ID" },
+          "catId2": { "type": "string", "description": "二级类目ID" },
+          "catId3": { "type": "string", "description": "三级类目ID" },
+          "skuNum": { "type": "integer", "description": "SKU 数量" },
+          "saleSkuNum": { "type": "integer", "description": "在售 SKU 数量" },
+          "saleRatio": { "type": "number", "format": "float", "description": "在售比例" },
+          "monthSales": { "type": "number", "format": "float", "description": "月销量" },
+          "monthSalesRating": { "type": "number", "format": "float", "description": "月销量评分" },
+          "monthSalesDynamics": { "type": "number", "format": "float", "description": "月销量变动" },
+          "monthGmv": { "type": "number", "format": "float", "description": "月 GMV" },
+          "monthGmvRmb": { "type": "number", "format": "float", "description": "月 GMV（人民币）" },
+          "monthGmvRating": { "type": "number", "format": "float", "description": "月 GMV 评分" },
+          "monthGmvDynamics": { "type": "number", "format": "float", "description": "月 GMV 变动" },
+          "brand": { "type": "string", "description": "品牌名" },
+          "brandGmv": { "type": "number", "format": "float", "description": "品牌 GMV" },
+          "brandGmvRmb": { "type": "number", "format": "float", "description": "品牌 GMV（人民币）" },
+          "brandGmvRating": { "type": "number", "format": "float", "description": "品牌 GMV 占比" },
+          "topGmv": { "type": "number", "format": "float", "description": "Top GMV" },
+          "topGmvRating": { "type": "number", "format": "float", "description": "Top GMV 占比" },
+          "topAvgPrice": { "type": "number", "format": "float", "description": "Top 均价" },
+          "topAvgPriceRmb": { "type": "number", "format": "float", "description": "Top 均价（人民币）" }
+        }
+      },
+      "HighResponse": {
+        "type": "object",
+        "properties": {
+          "highList": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/HighItem" },
+            "description": "蓝海行业列表"
+          }
+        }
+      },
+      "HotResponse": {
+        "type": "object",
+        "properties": {
+          "hotList": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/HighItem" },
+            "description": "热销行业列表"
+          }
+        }
+      },
+      "ChanceResponse": {
+        "type": "object",
+        "properties": {
+          "chanceList": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/HighItem" },
+            "description": "潜力行业列表"
+          }
+        }
+      },
+      "IndustryRangeBucket": {
+        "type": "object",
+        "description": "行业区间分布项",
+        "properties": {
+          "id": { "type": "string", "description": "区间 ID" },
+          "title": { "type": "string", "description": "区间标题" },
+          "itemCount": { "type": "integer", "description": "商品数量" },
+          "sales": { "type": "number", "format": "float", "description": "销量" },
+          "gmv": { "type": "number", "format": "float", "description": "GMV" },
+          "itemCountRate": { "type": "number", "format": "float", "description": "商品数量占比" },
+          "salesRate": { "type": "number", "format": "float", "description": "销量占比" },
+          "gmvRate": { "type": "number", "format": "float", "description": "GMV 占比" }
+        }
+      },
+      "IndustryBrandRateItem": {
+        "type": "object",
+        "description": "行业品牌占比项",
+        "properties": {
+          "catId": { "type": "string", "description": "类目 ID" },
+          "catName": { "type": "string", "description": "类目名称" },
+          "catNameCn": { "type": "string", "description": "类目中文名" },
+          "brandGmv": { "type": "number", "format": "float", "description": "品牌 GMV" },
+          "brandGmvRate": { "type": "number", "format": "float", "description": "品牌 GMV 占比" },
+          "brandItemCount": { "type": "integer", "description": "品牌商品数" },
+          "brandItemCountRate": { "type": "number", "format": "float", "description": "品牌商品占比" },
+          "brandSales": { "type": "number", "format": "float", "description": "品牌销量" },
+          "brandSalesRate": { "type": "number", "format": "float", "description": "品牌销量占比" },
+          "typeId": { "type": "string", "description": "类型 ID" }
+        }
+      },
+      "IndustryViewResponse": {
+        "type": "object",
+        "description": "行业概览数据",
+        "properties": {
+          "industrySalesRangeDtoList": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/IndustryRangeBucket" },
+            "description": "销量区间分布"
+          },
+          "industryGmvRangeDtoList": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/IndustryRangeBucket" },
+            "description": "GMV 区间分布"
+          },
+          "industryPriceRangeDtoList": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/IndustryRangeBucket" },
+            "description": "价格区间分布"
+          },
+          "industryBrandRateDtoList": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/IndustryBrandRateItem" },
+            "description": "品牌占比列表"
+          }
+        }
+      },
+      "IndustryTrendPoint": {
+        "type": "object",
+        "description": "行业趋势数据点",
+        "properties": {
+          "timest": { "type": "string", "description": "时间标记" },
+          "salesSkuCount": { "type": "integer", "description": "在售 SKU 数" },
+          "salesSkuRatio": { "type": "number", "format": "float", "description": "在售 SKU 比例" },
+          "monthSales": { "type": "number", "format": "float", "description": "月销量" },
+          "monthSalesRatio": { "type": "number", "format": "float", "description": "月销量环比" },
+          "monthGmv": { "type": "number", "format": "float", "description": "月 GMV" },
+          "monthGmvRatio": { "type": "number", "format": "float", "description": "月 GMV 环比" },
+          "currentDayPrice": { "type": "number", "format": "float", "description": "当日均价" }
+        }
+      },
+      "IndustryTrendResponse": {
+        "type": "object",
+        "properties": {
+          "industryTrendRange": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/IndustryTrendPoint" },
+            "description": "趋势数据点列表"
+          }
+        }
+      },
+      "WebhookNotifyRequest": {
+        "type": "object",
+        "required": ["executionId"],
+        "properties": {
+          "executionId": { "type": "string", "description": "执行 ID" },
+          "resultData": { "description": "结果数据（任意类型）" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "executionId": { "type": "string", "description": "执行 ID（备用字段）" }
+            }
+          }
+        }
+      },
+      "PanelConfigUpdate": {
+        "type": "object",
+        "properties": {
+          "modules": { "type": "array", "items": {}, "description": "面板模块配置" },
+          "layout": { "type": "object", "description": "面板布局配置" }
+        }
+      },
+      "PanelDataFillRequest": {
+        "type": "object",
+        "required": ["granularity", "startDate", "endDate"],
+        "properties": {
+          "granularity": {
+            "type": "string",
+            "enum": ["day", "month", "quarter", "year"],
+            "description": "粒度"
+          },
+          "startDate": { "type": "string", "format": "date", "description": "开始日期 (yyyy-MM-dd)", "example": "2025-01-01" },
+          "endDate": { "type": "string", "format": "date", "description": "结束日期 (yyyy-MM-dd)", "example": "2025-01-31" },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["high", "hot", "chance", "industryViewV2", "industryTrendRange"]
+            },
+            "description": "要填充的动作列表，不传默认全部"
+          }
+        }
+      },
+      "MengLaStatusRequest": {
+        "type": "object",
+        "required": ["granularity", "startDate", "endDate"],
+        "properties": {
+          "catId": { "type": "string", "description": "类目 ID" },
+          "granularity": {
+            "type": "string",
+            "enum": ["day", "month", "quarter", "year"],
+            "description": "粒度"
+          },
+          "startDate": { "type": "string", "format": "date", "description": "开始日期 (yyyy-MM-dd)" },
+          "endDate": { "type": "string", "format": "date", "description": "结束日期 (yyyy-MM-dd)" },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["high", "hot", "chance", "industryViewV2", "industryTrendRange"]
+            },
+            "description": "查询的动作列表"
+          }
+        }
+      },
+      "MengLaStatusResponse": {
+        "type": "object",
+        "properties": {
+          "catId": { "type": "string" },
+          "granularity": { "type": "string" },
+          "startDate": { "type": "string" },
+          "endDate": { "type": "string" },
+          "status": {
+            "type": "object",
+            "description": "按 action → period_key → boolean 的嵌套状态",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "EnqueueFullCrawlRequest": {
+        "type": "object",
+        "required": ["startDate", "endDate"],
+        "properties": {
+          "startDate": { "type": "string", "format": "date", "description": "开始日期 (yyyy-MM-dd)" },
+          "endDate": { "type": "string", "format": "date", "description": "结束日期 (yyyy-MM-dd)" },
+          "granularities": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["day", "month", "quarter", "year"] },
+            "description": "粒度列表"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["high", "hot", "chance", "industryViewV2", "industryTrendRange"]
+            },
+            "description": "动作列表"
+          },
+          "catId": { "type": "string", "description": "类目 ID" }
+        }
+      },
+      "BackfillRequest": {
+        "type": "object",
+        "required": ["start_date", "end_date"],
+        "properties": {
+          "start_date": { "type": "string", "format": "date", "description": "开始日期 (YYYY-MM-DD)" },
+          "end_date": { "type": "string", "format": "date", "description": "结束日期 (YYYY-MM-DD)" },
+          "interfaces": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["high", "hot", "chance", "industryViewV2", "industryTrendRange"]
+            },
+            "description": "接口列表"
+          }
+        }
+      },
+      "SilenceRuleRequest": {
+        "type": "object",
+        "required": ["rule_name"],
+        "properties": {
+          "rule_name": { "type": "string", "description": "告警规则名" },
+          "duration_minutes": { "type": "integer", "default": 60, "description": "静默时长（分钟）" }
+        }
+      },
+      "CacheWarmupRequest": {
+        "type": "object",
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "动作列表"
+          },
+          "cat_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "类目 ID 列表"
+          },
+          "granularities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "粒度列表"
+          },
+          "limit": { "type": "integer", "default": 100, "description": "限制数量" }
+        }
+      },
+      "PurgeRequest": {
+        "type": "object",
+        "required": ["confirm"],
+        "properties": {
+          "confirm": { "type": "boolean", "description": "确认删除（必须为 true）" },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["mongodb", "redis", "l1"]
+            },
+            "default": ["mongodb", "redis", "l1"],
+            "description": "清除目标"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "detail": { "type": "string", "description": "错误详情" }
+        }
+      }
+    }
+  },
+  "security": [],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "根路径",
+        "description": "API 根端点",
+        "operationId": "root",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "Industry Monitor API running" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "健康检查",
+        "description": "系统健康检查端点",
+        "operationId": "healthCheck",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "用户登录",
+        "description": "使用用户名密码登录，获取 JWT Token。有登录频率限制（60秒内最多10次）。",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LoginResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "认证失败",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过于频繁",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/generate-token": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "生成长期 Token",
+        "description": "为已认证用户生成长期有效的 API Token（默认1年）",
+        "operationId": "generateToken",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GenerateTokenRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GenerateTokenResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "获取当前用户信息",
+        "description": "验证当前 Token 并返回用户信息",
+        "operationId": "getMe",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MeResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": ["Categories"],
+        "summary": "获取类目树",
+        "description": "从 category.json 获取完整类目树结构",
+        "operationId": "getCategories",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "类目树结构"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/industry/daily": {
+      "get": {
+        "tags": ["Categories"],
+        "summary": "获取每日行业数据",
+        "description": "获取指定 period_key 的每日行业数据，优先从 MongoDB 查询，其次从 Redis 获取",
+        "operationId": "getDailyIndustry",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "description": "日期 period_key (yyyy-MM-dd 格式)",
+            "schema": { "type": "string", "format": "date", "example": "2025-06-01" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "type": "object" },
+                  "description": "行业报告文档数组"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mengla/query": {
+      "post": {
+        "tags": ["MengLa"],
+        "summary": "统一查询接口",
+        "description": "勐腊统一查询端点，支持所有 action 类型（high/hot/chance/industryViewV2/industryTrendRange）",
+        "operationId": "menglaQuery",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MengLaQueryBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功（响应结构取决于 action 类型）",
+            "headers": {
+              "X-MengLa-Source": {
+                "description": "数据来源 (l1/l2/l3/fresh)",
+                "schema": { "type": "string", "enum": ["l1", "l2", "l3", "fresh"] }
+              },
+              "X-MengLa-Trend-Partial": {
+                "description": "趋势数据部分返回标记 (requested,found)",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mengla/high": {
+      "post": {
+        "tags": ["MengLa"],
+        "summary": "蓝海行业 Top",
+        "description": "查询蓝海行业 Top 数据",
+        "operationId": "menglaHigh",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MengLaQueryParamsBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {
+              "X-MengLa-Source": {
+                "description": "数据来源",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HighResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mengla/hot": {
+      "post": {
+        "tags": ["MengLa"],
+        "summary": "热销行业 Top",
+        "description": "查询热销行业 Top 数据",
+        "operationId": "menglaHot",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MengLaQueryParamsBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {
+              "X-MengLa-Source": {
+                "description": "数据来源",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HotResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mengla/chance": {
+      "post": {
+        "tags": ["MengLa"],
+        "summary": "潜力行业 Top",
+        "description": "查询潜力行业 Top 数据",
+        "operationId": "menglaChance",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MengLaQueryParamsBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {
+              "X-MengLa-Source": {
+                "description": "数据来源",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChanceResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mengla/industry-view": {
+      "post": {
+        "tags": ["MengLa"],
+        "summary": "行业概览",
+        "description": "查询行业概览数据（销量/GMV/价格区间分布 + 品牌占比）",
+        "operationId": "menglaIndustryView",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MengLaQueryParamsBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {
+              "X-MengLa-Source": {
+                "description": "数据来源",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/IndustryViewResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mengla/industry-trend": {
+      "post": {
+        "tags": ["MengLa"],
+        "summary": "行业趋势",
+        "description": "查询行业趋势数据（通常使用 starRange/endRange 指定时间范围）",
+        "operationId": "menglaIndustryTrend",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MengLaQueryParamsBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {
+              "X-MengLa-Source": {
+                "description": "数据来源",
+                "schema": { "type": "string" }
+              },
+              "X-MengLa-Trend-Partial": {
+                "description": "趋势数据部分返回标记",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/IndustryTrendResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhook/mengla-notify": {
+      "get": {
+        "tags": ["Webhook"],
+        "summary": "Webhook 健康检查",
+        "description": "检查 Webhook 端点是否就绪",
+        "operationId": "webhookHealthCheck",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" },
+                    "message": { "type": "string", "example": "webhook endpoint is ready" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Webhook"],
+        "summary": "Webhook 回调通知",
+        "description": "接收勐腊托管任务的回调通知，将结果存入 Redis（TTL 30分钟）",
+        "operationId": "webhookNotify",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WebhookNotifyRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/config": {
+      "get": {
+        "tags": ["Panel"],
+        "summary": "获取面板配置",
+        "description": "获取当前行业面板配置（公开接口）",
+        "operationId": "getPanelConfig",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "面板配置对象，包含 modules 和 layout"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Panel"],
+        "summary": "更新面板配置",
+        "description": "更新行业面板配置",
+        "operationId": "updatePanelConfig",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PanelConfigUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "更新后的配置对象"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/tasks": {
+      "get": {
+        "tags": ["Panel"],
+        "summary": "获取面板任务列表",
+        "description": "列出行业面板相关的可用任务",
+        "operationId": "getPanelTasks",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string", "description": "任务 ID" },
+                      "name": { "type": "string", "description": "任务名称" },
+                      "description": { "type": "string", "description": "任务描述" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/tasks/{task_id}/run": {
+      "post": {
+        "tags": ["Panel"],
+        "summary": "运行面板任务",
+        "description": "按 ID 触发面板任务（后台运行）",
+        "operationId": "runPanelTask",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "description": "任务 ID",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "task started" },
+                    "task_id": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "任务未找到",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/data/fill": {
+      "post": {
+        "tags": ["Panel"],
+        "summary": "数据补录",
+        "description": "提交后台任务，为指定日期范围补录缺失的勐腊数据",
+        "operationId": "panelDataFill",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PanelDataFillRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "fill started" },
+                    "granularity": { "type": "string" },
+                    "startDate": { "type": "string" },
+                    "endDate": { "type": "string" },
+                    "periodKeyCount": { "type": "integer", "description": "周期 key 总数" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/mengla/status": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "查询数据可用性",
+        "description": "检查指定类目 + 日期范围 + 粒度的数据可用性状态",
+        "operationId": "menglaStatus",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MengLaStatusRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MengLaStatusResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/mengla/enqueue-full-crawl": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "提交全量爬取任务",
+        "description": "创建基于队列的全量爬取任务",
+        "operationId": "enqueueFullCrawl",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EnqueueFullCrawlRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "crawl job enqueued" },
+                    "jobId": { "type": "string" },
+                    "startDate": { "type": "string" },
+                    "endDate": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/backfill": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "触发历史数据回填",
+        "description": "触发历史数据回填任务（后台运行）",
+        "operationId": "backfill",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BackfillRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "backfill started" },
+                    "start_date": { "type": "string" },
+                    "end_date": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/metrics": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "获取采集指标",
+        "description": "获取采集指标统计数据",
+        "operationId": "getMetrics",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "采集指标统计"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/metrics/latency": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "获取延迟百分位",
+        "description": "获取延迟百分位统计数据",
+        "operationId": "getMetricsLatency",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "延迟百分位统计"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/alerts": {
+      "get": {
+        "tags": ["Admin - Alerts"],
+        "summary": "获取活跃告警",
+        "description": "获取当前活跃的告警列表",
+        "operationId": "getAlerts",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "active": { "type": "array", "items": {}, "description": "活跃告警列表" },
+                    "rules": { "type": "object", "description": "告警规则" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/alerts/history": {
+      "get": {
+        "tags": ["Admin - Alerts"],
+        "summary": "获取告警历史",
+        "description": "获取告警历史记录",
+        "operationId": "getAlertsHistory",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "返回记录数量限制",
+            "schema": { "type": "integer", "default": 100 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "type": "object" },
+                  "description": "告警历史记录"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/alerts/check": {
+      "post": {
+        "tags": ["Admin - Alerts"],
+        "summary": "手动触发告警检查",
+        "description": "手动触发一次告警检查",
+        "operationId": "checkAlerts",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "告警检查结果"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/alerts/silence": {
+      "post": {
+        "tags": ["Admin - Alerts"],
+        "summary": "静默告警规则",
+        "description": "静默指定的告警规则",
+        "operationId": "silenceAlert",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SilenceRuleRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "Rule error_rate silenced for 60 minutes" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "规则未找到",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/cache/stats": {
+      "get": {
+        "tags": ["Admin - Cache"],
+        "summary": "获取缓存统计",
+        "description": "获取缓存统计信息",
+        "operationId": "getCacheStats",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "缓存统计信息"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/cache/warmup": {
+      "post": {
+        "tags": ["Admin - Cache"],
+        "summary": "缓存预热",
+        "description": "触发缓存预热任务（后台运行）",
+        "operationId": "cacheWarmup",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CacheWarmupRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "Cache warmup started" },
+                    "limit": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/cache/clear-l1": {
+      "post": {
+        "tags": ["Admin - Cache"],
+        "summary": "清除 L1 缓存",
+        "description": "清除本地 L1 缓存",
+        "operationId": "clearL1Cache",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "L1 cache cleared" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/circuit-breakers": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "获取熔断器状态",
+        "description": "获取所有熔断器的当前状态",
+        "operationId": "getCircuitBreakers",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "熔断器状态统计"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/circuit-breakers/reset": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "重置所有熔断器",
+        "description": "重置所有熔断器状态",
+        "operationId": "resetCircuitBreakers",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "All circuit breakers reset" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/system/status": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "获取系统综合状态",
+        "description": "获取系统综合状态，包括指标、缓存、告警、熔断器和调度器信息",
+        "operationId": "getSystemStatus",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "metrics": { "type": "object", "description": "指标信息" },
+                    "cache": { "type": "object", "description": "缓存信息" },
+                    "alerts": {
+                      "type": "object",
+                      "properties": {
+                        "active_count": { "type": "integer", "description": "活跃告警数" },
+                        "rules": { "type": "object", "description": "告警规则" }
+                      }
+                    },
+                    "circuit_breakers": { "type": "object", "description": "熔断器状态" },
+                    "scheduler": {
+                      "type": "object",
+                      "properties": {
+                        "running": { "type": "boolean", "description": "是否运行中" },
+                        "jobs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": "string" },
+                              "name": { "type": "string" },
+                              "next_run": { "type": "string" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/scheduler/status": {
+      "get": {
+        "tags": ["Admin - Scheduler"],
+        "summary": "获取调度器状态",
+        "description": "获取调度器运行状态详情",
+        "operationId": "getSchedulerStatus",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "running": { "type": "boolean", "description": "是否运行中" },
+                    "state": {
+                      "type": "string",
+                      "enum": ["stopped", "running", "paused"],
+                      "description": "运行状态"
+                    },
+                    "total_jobs": { "type": "integer", "description": "任务总数" },
+                    "active_jobs": { "type": "array", "items": {}, "description": "活跃任务" },
+                    "paused_jobs": { "type": "array", "items": {}, "description": "暂停任务" },
+                    "background_tasks": { "type": "integer", "description": "后台任务数" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/scheduler/pause": {
+      "post": {
+        "tags": ["Admin - Scheduler"],
+        "summary": "暂停调度器",
+        "description": "暂停调度器运行",
+        "operationId": "pauseScheduler",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "scheduler paused" },
+                    "paused": { "type": "boolean", "example": true }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/scheduler/resume": {
+      "post": {
+        "tags": ["Admin - Scheduler"],
+        "summary": "恢复调度器",
+        "description": "恢复调度器运行",
+        "operationId": "resumeScheduler",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "scheduler resumed" },
+                    "resumed": { "type": "boolean", "example": true }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/tasks/cancel-all": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "取消所有后台任务",
+        "description": "取消所有正在运行的后台采集任务",
+        "operationId": "cancelAllTasks",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "All tasks cancelled" },
+                    "cancelled_asyncio_tasks": { "type": "integer", "description": "已取消的异步任务数" },
+                    "cancelled_sync_logs": { "type": "integer", "description": "已取消的同步日志数" },
+                    "cancelled_crawl_jobs": { "type": "integer", "description": "已取消的爬取任务数" },
+                    "cancelled_crawl_subtasks": { "type": "integer", "description": "已取消的爬取子任务数" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/data/purge": {
+      "post": {
+        "tags": ["Admin - Data"],
+        "summary": "清除所有数据",
+        "description": "清除所有采集数据和缓存（需要确认），支持按目标清除（mongodb/redis/l1）",
+        "operationId": "purgeData",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PurgeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "Purge completed" },
+                    "results": {
+                      "type": "object",
+                      "properties": {
+                        "mongodb": {
+                          "type": "object",
+                          "additionalProperties": { "type": "integer" },
+                          "description": "各集合删除的文档数"
+                        },
+                        "redis": {
+                          "type": "object",
+                          "properties": {
+                            "deleted_keys": { "type": "integer", "description": "删除的键数" }
+                          }
+                        },
+                        "l1": {
+                          "type": "object",
+                          "properties": {
+                            "cleared": { "type": "boolean" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "未确认",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sync-tasks/today": {
+      "get": {
+        "tags": ["SyncTasks"],
+        "summary": "获取今日同步任务",
+        "description": "获取今日的同步任务列表",
+        "operationId": "getSyncTasksToday",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tasks": { "type": "array", "items": {}, "description": "任务列表" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sync-tasks/{log_id}": {
+      "get": {
+        "tags": ["SyncTasks"],
+        "summary": "获取同步任务详情",
+        "description": "按 ID 获取单个同步任务详情",
+        "operationId": "getSyncTaskDetail",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "log_id",
+            "in": "path",
+            "required": true,
+            "description": "同步任务日志 ID",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "同步任务详情"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "任务未找到",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
