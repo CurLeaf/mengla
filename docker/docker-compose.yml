@@ -23,9 +23,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
-    volumes:
-      - ./config/category.json:/app/backend/category.json:ro
-      - ./config/panel_config.json:/app/backend/panel_config.json
     depends_on:
       - mongodb
       - redis

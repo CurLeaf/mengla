@@ -21,8 +21,8 @@ const MODES = [
   { key: "chance", path: "/chance", name: "潜力Top行业", badge: "CHANCE" },
 ] as const;
 
-const SHOW_ADMIN_CENTER =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_ADMIN_CENTER === "true";
+// 管理中心始终展示（已有登录认证保护）
+const SHOW_ADMIN_CENTER = true;
 
 /** 通过 Outlet context 向子路由传递的数据 */
 export interface LayoutContext {
@@ -182,7 +182,28 @@ export default function App() {
                 <span className="text-[10px] font-mono tracking-[0.2em] text-white/45">ADMIN</span>
               </NavLink>
             )}
+            <NavLink
+              to="/token"
+              className={({ isActive }: { isActive: boolean }) =>
+                `w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors ${
+                  isActive ? "bg-white/10 text-white" : "text-white/65 hover:bg-white/5"
+                }`
+              }
+            >
+              <span>Token 管理</span>
+              <span className="text-[10px] font-mono tracking-[0.2em] text-white/45">TOKEN</span>
+            </NavLink>
           </nav>
+          {/* 登出 */}
+          <div className="border-t border-white/10 px-5 py-3">
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="w-full text-left text-xs text-white/45 hover:text-white/70 transition-colors"
+            >
+              退出登录
+            </button>
+          </div>
         </aside>
 
         {/* ---------- 主内容区 ---------- */}

@@ -3,11 +3,14 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import App from "./App";
+import { AuthGuard } from "./components/AuthGuard";
+import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import HighPage from "./pages/HighPage";
 import HotPage from "./pages/HotPage";
 import ChancePage from "./pages/ChancePage";
 import AdminPage from "./pages/AdminPage";
+import TokenPage from "./pages/TokenPage";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -21,11 +24,17 @@ const queryClient = new QueryClient({
 
 const router = createBrowserRouter([
   {
+    path: "/login",
+    element: <LoginPage />,
+  },
+  {
     path: "/",
     element: (
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
+      <AuthGuard>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </AuthGuard>
     ),
     children: [
       { index: true, element: <DashboardPage /> },
@@ -33,6 +42,7 @@ const router = createBrowserRouter([
       { path: "hot", element: <HotPage /> },
       { path: "chance", element: <ChancePage /> },
       { path: "admin", element: <AdminPage /> },
+      { path: "token", element: <TokenPage /> },
     ],
   },
 ]);
