@@ -1,16 +1,8 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { queryMengla } from "./services/mengla-api";
 import { authFetch, logout } from "./services/auth";
 import { useCategoryState } from "./hooks/useCategoryState";
-import { buildQueryParams, buildTrendQueryParams } from "./hooks/useMenglaQuery";
-import {
-  getDefaultTimestForPeriod,
-} from "./components/RankPeriodSelector";
-import {
-  getDefaultTrendRangeForPeriod,
-} from "./components/TrendPeriodRangeSelector";
 import type { Category, CategoryChild } from "./types/category";
 
 /* ---------- 常量 ---------- */
@@ -27,6 +19,8 @@ const SHOW_ADMIN_CENTER = true;
 /** 通过 Outlet context 向子路由传递的数据 */
 export interface LayoutContext {
   primaryCatId: string;
+  /** >0 表示用户已点击采集，页面 query 才允许发起请求 */
+  fetchTrigger: number;
 }
 
 /* ---------- Layout 组件 ---------- */
@@ -46,10 +40,16 @@ export default function App() {
     selectedCatLabel,
   } = useCategoryState();
 
-  /* ---- 采集 ---- */
+  /* ---- 采集触发控制 ---- */
+  const [fetchTrigger, setFetchTrigger] = useState(0);
   const [triggerLoading, setTriggerLoading] = useState(false);
   const [collectMode, setCollectMode] = useState<"current" | "fill" | "force">("current");
   const queryClient = useQueryClient();
+
+  // 切换页面时重置触发器，页面不会自动发起请求
+  useEffect(() => {
+    setFetchTrigger(0);
+  }, [location.pathname]);
 
   // 当前路径对应的 modeKey
   const currentModeKey = useMemo(() => {
@@ -73,18 +73,8 @@ export default function App() {
         queryClient.invalidateQueries({ queryKey: ["mengla"] });
         alert("补齐采集任务已启动！将只采集缺失的数据，已有缓存的会跳过");
       } else {
-        const action = currentModeKey === "overview" ? "industryTrendRange" : currentModeKey;
-        const body =
-          currentModeKey === "overview"
-            ? buildTrendQueryParams(
-                "industryTrendRange",
-                primaryCatId,
-                "update",
-                getDefaultTrendRangeForPeriod("update").start,
-                getDefaultTrendRangeForPeriod("update").end
-              )
-            : buildQueryParams(action, primaryCatId, "month", getDefaultTimestForPeriod("month"));
-        await queryMengla({ ...body, extra: { force_refresh: true } });
+        // "当前"模式：激活页面查询（fetchTrigger > 0 时 useQuery 才 enabled）
+        setFetchTrigger((prev) => prev + 1);
         queryClient.invalidateQueries({ queryKey: ["mengla"] });
       }
     } catch (e) {
@@ -253,7 +243,10 @@ export default function App() {
                   <button
                     type="button"
                     className="bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 disabled:opacity-50"
-                    onClick={() => queryClient.invalidateQueries({ queryKey: ["mengla"] })}
+                    onClick={() => {
+                      setFetchTrigger((prev) => prev + 1);
+                      queryClient.invalidateQueries({ queryKey: ["mengla"] });
+                    }}
                   >
                     刷新
                   </button>
@@ -263,7 +256,7 @@ export default function App() {
           )}
 
           {/* 子路由渲染 */}
-          <Outlet context={{ primaryCatId } satisfies LayoutContext} />
+          <Outlet context={{ primaryCatId, fetchTrigger } satisfies LayoutContext} />
         </main>
       </div>
     </div>

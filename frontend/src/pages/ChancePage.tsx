@@ -13,7 +13,7 @@ import { useOutletContext } from "react-router-dom";
 import type { LayoutContext } from "../App";
 
 export default function ChancePage() {
-  const { primaryCatId } = useOutletContext<LayoutContext>();
+  const { primaryCatId, fetchTrigger } = useOutletContext<LayoutContext>();
   const queryClient = useQueryClient();
 
   const [period, setPeriod] = useState<PeriodType>("month");
@@ -25,7 +25,7 @@ export default function ChancePage() {
   const query = useQuery({
     queryKey,
     queryFn: () => queryMengla(buildQueryParams("chance", primaryCatId, period, timest)),
-    enabled: !!primaryCatId && !!timest,
+    enabled: fetchTrigger > 0 && !!primaryCatId && !!timest,
     staleTime: 5 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     networkMode: "always",
@@ -33,6 +33,25 @@ export default function ChancePage() {
   });
 
   const list = useRankList(pickPayload(query.data), "chanceList");
+
+  if (fetchTrigger === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <RankPeriodSelector
+            selectedPeriod={period}
+            selectedTimest={timest}
+            onPeriodChange={(p) => { setPeriod(p); setTimest(getDefaultTimestForPeriod(p)); }}
+            onTimestChange={setTimest}
+          />
+        </div>
+        <div className="flex flex-col items-center justify-center py-24 text-white/40 space-y-3">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
+          <p className="text-sm">请点击左上角 <span className="text-[#5E6AD2] font-medium">「采集」</span> 按钮加载数据</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
