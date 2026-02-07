@@ -315,6 +315,16 @@ async def _fetch_mengla_data(
     # 3. 优先从 MongoDB 查（趋势：范围内各 period_key 查齐后合并返回；其他：单条）
     # 如果 skip_cache=True，跳过缓存检查，直接走采集
     existing = None
+    # 预定义 mongo_query，确保 skip_cache=True 时存储阶段也能使用
+    if not is_trend:
+        mongo_query = {
+            "action": action,
+            "cat_id": cat_id,
+            "granularity": granularity,
+            "period_key": period_key,
+        }
+    else:
+        mongo_query = None
     if not skip_cache:
         if is_trend:
             if not period_keys_list:

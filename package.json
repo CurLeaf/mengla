@@ -2,8 +2,7 @@
   "name": "mengla-data-collect",
   "private": true,
   "scripts": {
-    "dev": "pnpm exec concurrently -n api,web -c cyan,green \"uvicorn backend.main:app --reload --port 8000\" \"pnpm --filter industry-monitor-frontend dev\"",
-    "dev:backend": "uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:backend": "uvicorn backend.main:app --reload --reload-dir backend --host 0.0.0.0 --port 8000",
     "dev:frontend": "pnpm --filter industry-monitor-frontend dev",
     "docker:up": "docker compose -f docker/dev/docker-compose.yml up -d",
     "docker:logs": "docker compose -f docker/dev/docker-compose.yml logs -f",
@@ -13,7 +12,6 @@
     "preview": "pnpm --filter industry-monitor-frontend preview"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
     "typescript": "~5.6.3"
   }
 }

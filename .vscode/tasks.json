@@ -10,7 +10,7 @@
     {
       "label": "Dev: Backend (FastAPI)",
       "type": "shell",
-      "command": "python -m pip install -r backend/requirements.txt; python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000",
+      "command": "python -m pip install -r backend/requirements.txt; python -m uvicorn backend.main:app --reload --reload-dir backend --host 0.0.0.0 --port 8000",
       "options": {
         "cwd": "."
       },

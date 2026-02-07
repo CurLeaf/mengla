@@ -82,6 +82,19 @@ app = FastAPI(title="Industry Monitor API", version="0.1.0")
 
 logger = logging.getLogger("mengla-backend")
 
+# ---------------------------------------------------------------------------
+# 后台任务跟踪：统一管理 asyncio.create_task() 创建的任务，shutdown 时取消
+# ---------------------------------------------------------------------------
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _track_task(coro) -> asyncio.Task:
+    """创建后台任务并跟踪，任务完成后自动移除引用。"""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -114,7 +127,24 @@ async def _init_alerting() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown_scheduler() -> None:
-    scheduler.shutdown(wait=False)
+    # 1. 停止 scheduler（等待正在运行的 job 完成）
+    try:
+        scheduler.shutdown(wait=True)
+        logger.info("Scheduler shutdown completed")
+    except Exception as exc:
+        logger.warning("Scheduler shutdown error: %s", exc)
+
+    # 2. 取消所有跟踪的后台任务
+    if _background_tasks:
+        logger.info("Cancelling %d background tasks", len(_background_tasks))
+        for task in list(_background_tasks):
+            task.cancel()
+        # 等待所有任务完成取消（最多 5 秒）
+        done, pending = await asyncio.wait(
+            list(_background_tasks), timeout=5.0
+        )
+        if pending:
+            logger.warning("%d background tasks did not finish in time", len(pending))
 
 
 class BackfillRequest(BaseModel):
@@ -584,7 +614,7 @@ async def panel_run_task(task_id: str):
     if task_id not in PANEL_TASKS:
         raise HTTPException(status_code=404, detail=f"unknown task_id: {task_id}")
     run_fn = PANEL_TASKS[task_id]["run"]
-    asyncio.create_task(run_fn())
+    _track_task(run_fn())
     return {"message": "task started", "task_id": task_id}
 
 

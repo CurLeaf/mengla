@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
 
-from ..infra.database import mongo_db
+from ..infra import database
 
 # Collection name
 SYNC_TASK_LOGS = "sync_task_logs"
@@ -42,13 +42,7 @@ async def create_sync_task_log(
     Returns:
         日志记录 ID (字符串) 或 None
     """
-    # #region agent log
-    import json as _json; open(r'd:\GitHub\mengla-data-collect\.cursor\debug.log', 'a', encoding='utf-8').write(_json.dumps({"hypothesisId":"B","location":"sync_task_log.py:create_sync_task_log:entry","message":"create_sync_task_log called","data":{"task_id":task_id,"mongo_db_is_none":mongo_db is None},"timestamp":__import__('time').time()*1000})+'\n')
-    # #endregion
-    if mongo_db is None:
-        # #region agent log
-        import json as _json; open(r'd:\GitHub\mengla-data-collect\.cursor\debug.log', 'a', encoding='utf-8').write(_json.dumps({"hypothesisId":"B","location":"sync_task_log.py:create_sync_task_log:mongo_none","message":"mongo_db is None, returning None","data":{},"timestamp":__import__('time').time()*1000})+'\n')
-        # #endregion
+    if database.mongo_db is None:
         return None
     
     now = datetime.utcnow()
@@ -69,7 +63,7 @@ async def create_sync_task_log(
         "updated_at": now,
     }
     
-    result = await mongo_db[SYNC_TASK_LOGS].insert_one(doc)
+    result = await database.mongo_db[SYNC_TASK_LOGS].insert_one(doc)
     return str(result.inserted_id)
 
 
@@ -86,7 +80,7 @@ async def update_sync_task_progress(
         completed_delta: 完成数增量
         failed_delta: 失败数增量
     """
-    if mongo_db is None or not log_id:
+    if database.mongo_db is None or not log_id:
         return
     
     try:
@@ -103,7 +97,7 @@ async def update_sync_task_progress(
         if failed_delta:
             update["$inc"]["progress.failed"] = failed_delta
     
-    await mongo_db[SYNC_TASK_LOGS].update_one({"_id": oid}, update)
+    await database.mongo_db[SYNC_TASK_LOGS].update_one({"_id": oid}, update)
 
 
 async def finish_sync_task_log(
@@ -119,7 +113,7 @@ async def finish_sync_task_log(
         status: 最终状态 (COMPLETED 或 FAILED)
         error_message: 错误信息 (仅当 status=FAILED 时)
     """
-    if mongo_db is None or not log_id:
+    if database.mongo_db is None or not log_id:
         return
     
     try:
@@ -139,7 +133,7 @@ async def finish_sync_task_log(
     if error_message:
         update["$set"]["error_message"] = error_message[:2000]
     
-    await mongo_db[SYNC_TASK_LOGS].update_one({"_id": oid}, update)
+    await database.mongo_db[SYNC_TASK_LOGS].update_one({"_id": oid}, update)
 
 
 async def get_today_sync_tasks() -> List[Dict[str, Any]]:
@@ -149,14 +143,14 @@ async def get_today_sync_tasks() -> List[Dict[str, Any]]:
     Returns:
         任务列表，按创建时间倒序排列
     """
-    if mongo_db is None:
+    if database.mongo_db is None:
         return []
     
     # 计算今天的开始时间 (UTC)
     now = datetime.utcnow()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
-    cursor = mongo_db[SYNC_TASK_LOGS].find(
+    cursor = database.mongo_db[SYNC_TASK_LOGS].find(
         {"created_at": {"$gte": today_start}},
     ).sort("created_at", -1)
     
@@ -181,7 +175,7 @@ async def get_sync_task_detail(log_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         任务详情或 None
     """
-    if mongo_db is None or not log_id:
+    if database.mongo_db is None or not log_id:
         return None
     
     try:
@@ -189,7 +183,7 @@ async def get_sync_task_detail(log_id: str) -> Optional[Dict[str, Any]]:
     except Exception:
         return None
     
-    task = await mongo_db[SYNC_TASK_LOGS].find_one({"_id": oid})
+    task = await database.mongo_db[SYNC_TASK_LOGS].find_one({"_id": oid})
     
     if task:
         task["id"] = str(task.pop("_id"))
@@ -209,10 +203,10 @@ async def get_running_task_by_task_id(task_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         运行中的任务或 None
     """
-    if mongo_db is None:
+    if database.mongo_db is None:
         return None
     
-    task = await mongo_db[SYNC_TASK_LOGS].find_one({
+    task = await database.mongo_db[SYNC_TASK_LOGS].find_one({
         "task_id": task_id,
         "status": STATUS_RUNNING,
     })
