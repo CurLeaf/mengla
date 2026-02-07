@@ -497,6 +497,9 @@ async def run_mengla_granular_jobs(
         force_refresh: 是否强制刷新（跳过缓存）
         trigger: 触发方式 ("manual" 或 "scheduled")
     """
+    # #region agent log
+    import json as _json; open(r'd:\GitHub\mengla-data-collect\.cursor\debug.log', 'a', encoding='utf-8').write(_json.dumps({"hypothesisId":"A","location":"scheduler.py:run_mengla_granular_jobs:entry","message":"Function called","data":{"force_refresh":force_refresh,"trigger":trigger},"timestamp":__import__('time').time()*1000})+'\n')
+    # #endregion
     from datetime import timedelta
     # 默认采集昨天的数据（外部数据源基于 T-1）
     now = target_date or (datetime.now() - timedelta(days=1))
@@ -515,12 +518,18 @@ async def run_mengla_granular_jobs(
     task_name = "MengLa 强制全量采集" if force_refresh else "MengLa 日/月/季/年补齐"
     
     # 创建同步任务日志
+    # #region agent log
+    import json as _json; open(r'd:\GitHub\mengla-data-collect\.cursor\debug.log', 'a', encoding='utf-8').write(_json.dumps({"hypothesisId":"B","location":"scheduler.py:before_create_log","message":"About to create sync task log","data":{"task_id":task_id,"task_name":task_name,"total":total_tasks,"trigger":trigger,"mongo_db_is_none":mongo_db is None},"timestamp":__import__('time').time()*1000})+'\n')
+    # #endregion
     log_id = await create_sync_task_log(
         task_id=task_id,
         task_name=task_name,
         total=total_tasks,
         trigger=trigger,
     )
+    # #region agent log
+    import json as _json; open(r'd:\GitHub\mengla-data-collect\.cursor\debug.log', 'a', encoding='utf-8').write(_json.dumps({"hypothesisId":"C","location":"scheduler.py:after_create_log","message":"Sync task log created","data":{"log_id":log_id},"timestamp":__import__('time').time()*1000})+'\n')
+    # #endregion
     
     logger.info(
         "Starting granular jobs: task_id=%s total=%d force_refresh=%s log_id=%s",

@@ -42,7 +42,13 @@ async def create_sync_task_log(
     Returns:
         日志记录 ID (字符串) 或 None
     """
+    # #region agent log
+    import json as _json; open(r'd:\GitHub\mengla-data-collect\.cursor\debug.log', 'a', encoding='utf-8').write(_json.dumps({"hypothesisId":"B","location":"sync_task_log.py:create_sync_task_log:entry","message":"create_sync_task_log called","data":{"task_id":task_id,"mongo_db_is_none":mongo_db is None},"timestamp":__import__('time').time()*1000})+'\n')
+    # #endregion
     if mongo_db is None:
+        # #region agent log
+        import json as _json; open(r'd:\GitHub\mengla-data-collect\.cursor\debug.log', 'a', encoding='utf-8').write(_json.dumps({"hypothesisId":"B","location":"sync_task_log.py:create_sync_task_log:mongo_none","message":"mongo_db is None, returning None","data":{},"timestamp":__import__('time').time()*1000})+'\n')
+        # #endregion
         return None
     
     now = datetime.utcnow()
