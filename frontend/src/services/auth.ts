@@ -79,12 +79,12 @@ export function logout(): void {
 export interface GenerateTokenResult {
   token: string;
   label: string;
-  expires_hours: number;
+  expires_hours: number | null;
 }
 
 export async function generateApiToken(
   label: string = "api",
-  expiresHours: number = 24 * 365
+  expiresHours: number | null = 24 * 365
 ): Promise<GenerateTokenResult> {
   const resp = await authFetch(`${API_BASE}/api/auth/generate-token`, {
     method: "POST",

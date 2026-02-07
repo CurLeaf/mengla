@@ -2,7 +2,7 @@
   "name": "mengla-data-collect",
   "private": true,
   "scripts": {
-    "dev:backend": "uvicorn backend.main:app --reload --reload-dir backend --host 0.0.0.0 --port 8000",
+    "dev:backend": "python -m uvicorn backend.main:app --reload --reload-dir backend --host 0.0.0.0 --port 8000",
     "dev:frontend": "pnpm --filter industry-monitor-frontend dev",
     "docker:up": "docker compose -f docker/dev/docker-compose.yml up -d",
     "docker:logs": "docker compose -f docker/dev/docker-compose.yml logs -f",

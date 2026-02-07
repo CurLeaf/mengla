@@ -57,23 +57,29 @@ def create_token(
     subject: str,
     expires_hours: Optional[int] = None,
     extra_claims: Optional[dict] = None,
+    permanent: bool = False,
 ) -> str:
-    """签发 JWT token"""
+    """签发 JWT token。permanent=True 时不设置 exp，token 永不过期。"""
     now = datetime.now(timezone.utc)
-    exp = now + timedelta(hours=expires_hours or JWT_EXPIRE_HOURS)
     payload = {
         "sub": subject,
         "iat": now,
-        "exp": exp,
         **(extra_claims or {}),
     }
+    if not permanent:
+        payload["exp"] = now + timedelta(hours=expires_hours or JWT_EXPIRE_HOURS)
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def verify_token(token: str) -> dict:
-    """验证 JWT token，返回 payload；失败抛异常"""
+    """验证 JWT token，返回 payload；失败抛异常。支持永久 token（无 exp）。"""
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return jwt.decode(
+            token,
+            JWT_SECRET,
+            algorithms=[JWT_ALGORITHM],
+            options={"verify_exp": True, "require": ["sub", "iat"]},
+        )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token 已过期")
     except jwt.InvalidTokenError as e:
@@ -82,13 +88,15 @@ def verify_token(token: str) -> dict:
 
 def create_api_token(
     label: str = "api",
-    expires_hours: int = 24 * 365,
+    expires_hours: Optional[int] = 24 * 365,
 ) -> str:
-    """生成长期 API Token（管理后台用）"""
+    """生成长期 API Token（管理后台用）。expires_hours 为 None 时生成永久 token。"""
+    permanent = expires_hours is None
     return create_token(
         subject=f"api:{label}",
         expires_hours=expires_hours,
         extra_claims={"type": "api_token", "label": label},
+        permanent=permanent,
     )
 
 

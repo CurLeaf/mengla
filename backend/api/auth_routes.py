@@ -1,4 +1,6 @@
 """认证相关路由：登录、生成 Token、验证身份"""
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -22,7 +24,7 @@ class LoginRequest(BaseModel):
 
 class GenerateTokenRequest(BaseModel):
     label: str = "api"
-    expires_hours: int = 24 * 365  # 默认 1 年
+    expires_hours: int | None = 24 * 365  # 默认 1 年，None 表示永久
 
 
 # ---------------------------------------------------------------------------

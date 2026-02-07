@@ -4,17 +4,18 @@ import { generateApiToken } from "../services/auth";
 interface GeneratedToken {
   token: string;
   label: string;
-  expires_hours: number;
+  expires_hours: number | null;
   createdAt: string;
 }
 
 export default function TokenPage() {
   const [label, setLabel] = useState("api");
-  const [expiresHours, setExpiresHours] = useState(8760); // 365 天
+  const [expiresHours, setExpiresHours] = useState<number | null>(8760); // 365 天
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tokens, setTokens] = useState<GeneratedToken[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
 
   const handleGenerate = async (e: FormEvent) => {
     e.preventDefault();
@@ -38,6 +39,17 @@ export default function TokenPage() {
     }
   };
 
+  const handleDelete = (idx: number) => {
+    if (confirmDelete === idx) {
+      setTokens((prev) => prev.filter((_, i) => i !== idx));
+      setConfirmDelete(null);
+    } else {
+      setConfirmDelete(idx);
+      // 3 秒后自动取消确认状态
+      setTimeout(() => setConfirmDelete((cur) => (cur === idx ? null : cur)), 3000);
+    }
+  };
+
   const copyToClipboard = async (token: string) => {
     try {
       await navigator.clipboard.writeText(token);
@@ -54,6 +66,12 @@ export default function TokenPage() {
       setCopied(token);
       setTimeout(() => setCopied(null), 2000);
     }
+  };
+
+  const formatExpiry = (hours: number | null) => {
+    if (hours === null) return "永久";
+    if (hours >= 8760) return `${Math.round(hours / 8760)} 年`;
+    return `${Math.round(hours / 24)} 天`;
   };
 
   return (
@@ -85,8 +103,11 @@ export default function TokenPage() {
               有效期
             </label>
             <select
-              value={expiresHours}
-              onChange={(e) => setExpiresHours(Number(e.target.value))}
+              value={expiresHours === null ? "permanent" : expiresHours}
+              onChange={(e) => {
+                const val = e.target.value;
+                setExpiresHours(val === "permanent" ? null : Number(val));
+              }}
               className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:border-[#5E6AD2]"
             >
               <option value={24}>1 天</option>
@@ -95,6 +116,7 @@ export default function TokenPage() {
               <option value={2160}>90 天</option>
               <option value={8760}>1 年</option>
               <option value={87600}>10 年</option>
+              <option value="permanent">永久</option>
             </select>
           </div>
           <button
@@ -127,11 +149,28 @@ export default function TokenPage() {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium text-[#5E6AD2]">{item.label}</span>
-                    <span className="text-[10px] text-white/30">
-                      有效期 {item.expires_hours >= 8760 ? `${Math.round(item.expires_hours / 8760)} 年` : `${Math.round(item.expires_hours / 24)} 天`}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      item.expires_hours === null
+                        ? "bg-emerald-500/15 text-emerald-400"
+                        : "text-white/30"
+                    }`}>
+                      {item.expires_hours === null ? "永久有效" : `有效期 ${formatExpiry(item.expires_hours)}`}
                     </span>
                   </div>
-                  <span className="text-[10px] text-white/30">{item.createdAt}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-white/30">{item.createdAt}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(idx)}
+                      className={`px-2 py-1 text-[11px] rounded transition-colors ${
+                        confirmDelete === idx
+                          ? "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
+                          : "bg-white/5 hover:bg-red-500/10 border border-white/10 text-white/40 hover:text-red-400 hover:border-red-500/20"
+                      }`}
+                    >
+                      {confirmDelete === idx ? "确认删除" : "删除"}
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 text-[11px] text-white/70 bg-black/40 rounded px-3 py-2 font-mono break-all select-all">
