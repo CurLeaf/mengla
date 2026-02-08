@@ -23,7 +23,7 @@ RUN pnpm --filter industry-monitor-frontend build
 # ---- Stage 2: Serve with Nginx ----
 FROM nginx:alpine
 
-# 移除默认配置
+# 移除默认配置（由 docker-compose volume 挂载 nginx.conf）
 RUN rm /etc/nginx/conf.d/default.conf
 
 # 复制构建产物到 Nginx 静态目录
