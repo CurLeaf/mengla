@@ -1,12 +1,14 @@
 """管理与运维路由：监控指标、告警、缓存、熔断器、调度器控制、数据清空、采集健康"""
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from ..core.client import get_request_pressure
 from ..core.domain import VALID_ACTIONS
 from ..core.queue import create_crawl_job
 from ..infra import database
@@ -14,9 +16,9 @@ from ..infra.cache import get_cache_manager, warmup_cache
 from ..infra.metrics import get_metrics_collector, get_current_metrics
 from ..infra.alerting import get_alert_manager, run_alert_check
 from ..infra.resilience import get_circuit_manager
-from ..utils.category import get_all_valid_cat_ids, get_top_level_cat_ids
-from ..utils.period import period_keys_in_range, make_period_keys
-from ..utils.config import COLLECTION_NAME, REDIS_KEY_PREFIX
+from ..utils.category import get_all_valid_cat_ids
+from ..utils.period import period_keys_in_range
+from ..utils.config import COLLECTION_NAME
 from ..tools.backfill import backfill_data
 from .deps import require_admin
 
@@ -445,7 +447,109 @@ async def cancel_all_background_tasks():
 
 
 # ---------------------------------------------------------------------------
-# 采集健康监控
+# 基础设施健康检测（带超时保护）
+# ---------------------------------------------------------------------------
+_HEALTH_TIMEOUT = 3.0  # 每个子查询的超时秒数
+
+
+async def _check_mongo_status() -> Dict[str, Any]:
+    """MongoDB 连通性及服务器状态（带超时）"""
+    if database.mongo_client is None or database.mongo_db is None:
+        return {"ok": False, "error": "not_initialized"}
+    t0 = time.monotonic()
+    try:
+        result = await asyncio.wait_for(
+            database.mongo_db.command("ping"),
+            timeout=_HEALTH_TIMEOUT,
+        )
+        ping_ok = result.get("ok", 0) == 1
+        latency_ms = round((time.monotonic() - t0) * 1000, 1)
+
+        # serverStatus（只取核心指标）
+        server_status = await asyncio.wait_for(
+            database.mongo_db.command("serverStatus"),
+            timeout=_HEALTH_TIMEOUT,
+        )
+        connections = server_status.get("connections", {})
+        opcounters = server_status.get("opcounters", {})
+        mem = server_status.get("mem", {})
+
+        return {
+            "ok": ping_ok,
+            "latency_ms": latency_ms,
+            "connections": {
+                "current": connections.get("current", 0),
+                "available": connections.get("available", 0),
+                "total_created": connections.get("totalCreated", 0),
+            },
+            "opcounters": {
+                "insert": opcounters.get("insert", 0),
+                "query": opcounters.get("query", 0),
+                "update": opcounters.get("update", 0),
+                "delete": opcounters.get("delete", 0),
+                "getmore": opcounters.get("getmore", 0),
+                "command": opcounters.get("command", 0),
+            },
+            "memory_mb": {
+                "resident": mem.get("resident", 0),
+                "virtual": mem.get("virtual", 0),
+            },
+        }
+    except asyncio.TimeoutError:
+        return {"ok": False, "error": "timeout", "latency_ms": round((time.monotonic() - t0) * 1000, 1)}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "latency_ms": round((time.monotonic() - t0) * 1000, 1)}
+
+
+async def _check_redis_status() -> Dict[str, Any]:
+    """Redis 连通性及状态（带超时）"""
+    if database.redis_client is None:
+        return {"ok": False, "error": "not_initialized"}
+    t0 = time.monotonic()
+    try:
+        pong = await asyncio.wait_for(
+            database.redis_client.ping(),
+            timeout=_HEALTH_TIMEOUT,
+        )
+        latency_ms = round((time.monotonic() - t0) * 1000, 1)
+
+        info = await asyncio.wait_for(
+            database.redis_client.info(section="all"),
+            timeout=_HEALTH_TIMEOUT,
+        )
+
+        # key 数量（使用 dbsize 更轻量）
+        db_size = await asyncio.wait_for(
+            database.redis_client.dbsize(),
+            timeout=_HEALTH_TIMEOUT,
+        )
+
+        return {
+            "ok": bool(pong),
+            "latency_ms": latency_ms,
+            "version": info.get("redis_version", "?"),
+            "connected_clients": info.get("connected_clients", 0),
+            "blocked_clients": info.get("blocked_clients", 0),
+            "used_memory_human": info.get("used_memory_human", "?"),
+            "used_memory_peak_human": info.get("used_memory_peak_human", "?"),
+            "total_keys": db_size,
+            "ops_per_sec": info.get("instantaneous_ops_per_sec", 0),
+            "hit_rate": round(
+                info.get("keyspace_hits", 0)
+                / max(info.get("keyspace_hits", 0) + info.get("keyspace_misses", 0), 1)
+                * 100,
+                2,
+            ),
+            "uptime_seconds": info.get("uptime_in_seconds", 0),
+        }
+    except asyncio.TimeoutError:
+        return {"ok": False, "error": "timeout", "latency_ms": round((time.monotonic() - t0) * 1000, 1)}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "latency_ms": round((time.monotonic() - t0) * 1000, 1)}
+
+
+# ---------------------------------------------------------------------------
+# 采集健康监控（所有子查询均带超时保护，防止阻塞）
 # ---------------------------------------------------------------------------
 @router.get("/collect-health", dependencies=[Depends(require_admin)])
 async def get_collect_health(
@@ -453,115 +557,171 @@ async def get_collect_health(
 ):
     """
     采集健康监控面板数据：
+    - MongoDB / Redis 基础设施状态（带超时）
     - 各 action 的空数据/有数据统计
     - 连续空数据告警列表
     - Redis exec key 堆积数量
-    - 轮询超时统计
     """
-    if database.mongo_db is None:
-        raise HTTPException(status_code=500, detail="MongoDB not initialized")
-
     target_date = date or datetime.utcnow().strftime("%Y-%m-%d")
 
-    # --- 1. 各 action 的 is_empty 统计 ---
-    coll = database.mongo_db[COLLECTION_NAME]
-    actions = ["high", "hot", "chance", "industryViewV2", "industryTrendRange"]
-    action_stats: Dict[str, Any] = {}
+    # --- 0. 并发检查基础设施状态 ---
+    mongo_task = asyncio.create_task(_check_mongo_status())
+    redis_task = asyncio.create_task(_check_redis_status())
+    mongo_status, redis_status = await asyncio.gather(mongo_task, redis_task)
 
-    for action in actions:
-        pipeline = [
-            {"$match": {
-                "action": action,
-                "updated_at": {
-                    "$gte": datetime.strptime(target_date, "%Y-%m-%d"),
-                    "$lt": datetime.strptime(target_date, "%Y-%m-%d") + timedelta(days=1),
-                },
-            }},
-            {"$group": {
-                "_id": "$is_empty",
-                "count": {"$sum": 1},
-            }},
-        ]
-        cursor = coll.aggregate(pipeline)
-        results = await cursor.to_list(length=10)
-        total = 0
-        empty_count = 0
-        data_count = 0
-        for r in results:
-            total += r["count"]
-            if r["_id"] is True:
-                empty_count = r["count"]
-            else:
-                data_count = r["count"]
-        action_stats[action] = {
-            "total": total,
-            "empty": empty_count,
-            "has_data": data_count,
-            "empty_rate": round(empty_count / total, 4) if total > 0 else 0,
-        }
+    # 如果 MongoDB 完全不可用，也仍返回基础设施信息而不是 500
+    mongo_available = mongo_status.get("ok", False) and database.mongo_db is not None
+
+    # --- 1. 各 action 的 is_empty 统计（带超时） ---
+    action_stats: Dict[str, Any] = {}
+    if mongo_available:
+        coll = database.mongo_db[COLLECTION_NAME]
+        actions = ["high", "hot", "chance", "industryViewV2", "industryTrendRange"]
+
+        async def _query_action_stat(action: str) -> tuple:
+            pipeline = [
+                {"$match": {
+                    "action": action,
+                    "updated_at": {
+                        "$gte": datetime.strptime(target_date, "%Y-%m-%d"),
+                        "$lt": datetime.strptime(target_date, "%Y-%m-%d") + timedelta(days=1),
+                    },
+                }},
+                {"$group": {
+                    "_id": "$is_empty",
+                    "count": {"$sum": 1},
+                }},
+            ]
+            cursor = coll.aggregate(pipeline)
+            results = await cursor.to_list(length=10)
+            total = empty_count = data_count = 0
+            for r in results:
+                total += r["count"]
+                if r["_id"] is True:
+                    empty_count = r["count"]
+                else:
+                    data_count = r["count"]
+            return action, {
+                "total": total,
+                "empty": empty_count,
+                "has_data": data_count,
+                "empty_rate": round(empty_count / total, 4) if total > 0 else 0,
+            }
+
+        try:
+            stat_tasks = [
+                asyncio.wait_for(_query_action_stat(a), timeout=_HEALTH_TIMEOUT)
+                for a in actions
+            ]
+            results = await asyncio.gather(*stat_tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    logger.warning("action stat query failed: %s", r)
+                    continue
+                act, stat = r
+                action_stats[act] = stat
+        except Exception as e:
+            logger.warning("Failed to query action stats: %s", e)
 
     # --- 2. 连续空数据告警 (empty streak) ---
     empty_streaks: List[Dict[str, Any]] = []
-    if database.redis_client is not None:
+    if redis_status.get("ok") and database.redis_client is not None:
         try:
-            cursor_val = "0"
-            while True:
-                cursor_val, keys = await database.redis_client.scan(
-                    cursor=int(cursor_val), match="mengla:empty_streak:*", count=200,
-                )
-                for key in keys:
-                    val = await database.redis_client.get(key)
-                    if val is not None:
-                        count = int(val)
-                        if count >= 2:
-                            # key = mengla:empty_streak:action:cat_id
-                            parts = key.split(":") if isinstance(key, str) else key.decode().split(":")
-                            action_name = parts[2] if len(parts) > 2 else "?"
-                            cat_id_val = parts[3] if len(parts) > 3 else "?"
-                            empty_streaks.append({
-                                "action": action_name,
-                                "cat_id": cat_id_val,
-                                "streak": count,
-                                "level": "critical" if count >= 5 else "warning" if count >= 3 else "info",
-                            })
-                if cursor_val == 0 or str(cursor_val) == "0":
-                    break
-            empty_streaks.sort(key=lambda x: x["streak"], reverse=True)
+            async def _scan_empty_streaks() -> List[Dict[str, Any]]:
+                streaks: List[Dict[str, Any]] = []
+                cursor_val = "0"
+                while True:
+                    cursor_val, keys = await database.redis_client.scan(
+                        cursor=int(cursor_val), match="mengla:empty_streak:*", count=200,
+                    )
+                    for key in keys:
+                        val = await database.redis_client.get(key)
+                        if val is not None:
+                            count = int(val)
+                            if count >= 2:
+                                parts = key.split(":") if isinstance(key, str) else key.decode().split(":")
+                                action_name = parts[2] if len(parts) > 2 else "?"
+                                cat_id_val = parts[3] if len(parts) > 3 else "?"
+                                streaks.append({
+                                    "action": action_name,
+                                    "cat_id": cat_id_val,
+                                    "streak": count,
+                                    "level": "critical" if count >= 5 else "warning" if count >= 3 else "info",
+                                })
+                    if cursor_val == 0 or str(cursor_val) == "0":
+                        break
+                streaks.sort(key=lambda x: x["streak"], reverse=True)
+                return streaks
+
+            empty_streaks = await asyncio.wait_for(_scan_empty_streaks(), timeout=_HEALTH_TIMEOUT * 2)
+        except asyncio.TimeoutError:
+            logger.warning("Empty streak scan timed out")
         except Exception as e:
             logger.warning("Failed to scan empty streaks: %s", e)
 
     # --- 3. Redis exec key 堆积数 ---
     exec_key_count = 0
-    if database.redis_client is not None:
+    if redis_status.get("ok") and database.redis_client is not None:
         try:
-            cursor_val = "0"
-            while True:
-                cursor_val, keys = await database.redis_client.scan(
-                    cursor=int(cursor_val), match="mengla:exec:*", count=500,
-                )
-                exec_key_count += len(keys)
-                if cursor_val == 0 or str(cursor_val) == "0":
-                    break
-        except Exception:
+            async def _count_exec_keys() -> int:
+                count = 0
+                cursor_val = "0"
+                while True:
+                    cursor_val, keys = await database.redis_client.scan(
+                        cursor=int(cursor_val), match="mengla:exec:*", count=500,
+                    )
+                    count += len(keys)
+                    if cursor_val == 0 or str(cursor_val) == "0":
+                        break
+                return count
+
+            exec_key_count = await asyncio.wait_for(_count_exec_keys(), timeout=_HEALTH_TIMEOUT)
+        except (asyncio.TimeoutError, Exception):
             pass
 
-    # --- 4. 数据库总文档统计 ---
-    total_docs = await coll.count_documents({})
-    empty_docs = await coll.count_documents({"is_empty": True})
+    # --- 4. 数据库总文档统计（带超时） ---
+    total_docs = 0
+    empty_docs = 0
+    if mongo_available:
+        try:
+            coll = database.mongo_db[COLLECTION_NAME]
+            total_docs = await asyncio.wait_for(
+                coll.estimated_document_count(), timeout=_HEALTH_TIMEOUT
+            )
+            empty_docs = await asyncio.wait_for(
+                coll.count_documents({"is_empty": True}), timeout=_HEALTH_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Document count timed out")
+        except Exception as e:
+            logger.warning("Failed to count documents: %s", e)
 
     # --- 5. 最近采集记录 (最新 10 条) ---
-    recent_cursor = coll.find(
-        {},
-        {"action": 1, "cat_id": 1, "granularity": 1, "period_key": 1,
-         "is_empty": 1, "empty_reason": 1, "updated_at": 1, "source": 1, "_id": 0},
-    ).sort("updated_at", -1).limit(10)
-    recent_records = await recent_cursor.to_list(length=10)
-    for rec in recent_records:
-        if "updated_at" in rec and rec["updated_at"]:
-            rec["updated_at"] = rec["updated_at"].isoformat()
+    recent_records: List[Dict[str, Any]] = []
+    if mongo_available:
+        try:
+            coll = database.mongo_db[COLLECTION_NAME]
+            recent_cursor = coll.find(
+                {},
+                {"action": 1, "cat_id": 1, "granularity": 1, "period_key": 1,
+                 "is_empty": 1, "empty_reason": 1, "updated_at": 1, "source": 1, "_id": 0},
+            ).sort("updated_at", -1).limit(10)
+            recent_records = await asyncio.wait_for(
+                recent_cursor.to_list(length=10), timeout=_HEALTH_TIMEOUT
+            )
+            for rec in recent_records:
+                if "updated_at" in rec and rec["updated_at"]:
+                    rec["updated_at"] = rec["updated_at"].isoformat()
+        except asyncio.TimeoutError:
+            logger.warning("Recent records query timed out")
+        except Exception as e:
+            logger.warning("Failed to fetch recent records: %s", e)
 
     return {
         "date": target_date,
+        "mongo_status": mongo_status,
+        "redis_status": redis_status,
+        "request_pressure": get_request_pressure().snapshot(),
         "action_stats": action_stats,
         "empty_streaks": empty_streaks,
         "exec_key_count": exec_key_count,

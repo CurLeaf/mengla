@@ -1,11 +1,17 @@
 import { useState, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchTodaySyncTasks,
   cancelSyncTask,
   deleteSyncTask,
   type SyncTaskLog,
 } from "../../services/sync-task-api";
+import {
+  fetchSchedulerStatus,
+  pauseScheduler,
+  resumeScheduler,
+  cancelAllTasks,
+} from "../../services/mengla-admin-api";
 import { StatusBadge } from "./sync-task-log/StatusBadge";
 import { ProgressBar } from "./sync-task-log/ProgressBar";
 import { TriggerBadge } from "./sync-task-log/TriggerBadge";
@@ -81,12 +87,51 @@ export function SyncTaskLogViewer() {
   const [dialog, setDialog] = useState<DialogState>({ type: "none" });
   const [actionLoading, setActionLoading] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
+  const [cancelAllConfirm, setCancelAllConfirm] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   }, []);
+
+  // 调度器状态
+  const { data: schedulerStatus, isLoading: schedulerLoading } = useQuery({
+    queryKey: ["scheduler-status"],
+    queryFn: fetchSchedulerStatus,
+    refetchInterval: 5000,
+  });
+
+  const pauseMut = useMutation({
+    mutationFn: pauseScheduler,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scheduler-status"] });
+      showToast("调度器已暂停", "success");
+    },
+    onError: (e) => showToast(e instanceof Error ? e.message : "暂停失败", "error"),
+  });
+
+  const resumeMut = useMutation({
+    mutationFn: resumeScheduler,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scheduler-status"] });
+      showToast("调度器已恢复", "success");
+    },
+    onError: (e) => showToast(e instanceof Error ? e.message : "恢复失败", "error"),
+  });
+
+  const cancelAllMut = useMutation({
+    mutationFn: cancelAllTasks,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["sync-tasks-today"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduler-status"] });
+      showToast(
+        `已取消: 异步任务 ${data.cancelled_asyncio_tasks}, 同步日志 ${data.cancelled_sync_logs}, 爬虫 ${data.cancelled_crawl_jobs}`,
+        "success",
+      );
+    },
+    onError: (e) => showToast(e instanceof Error ? e.message : "取消失败", "error"),
+  });
 
   const handleCancel = useCallback(async () => {
     if (dialog.type !== "cancel") return;
@@ -156,6 +201,107 @@ export function SyncTaskLogViewer() {
         <span className="text-xs text-white/40">
           上次更新: {lastUpdated}
         </span>
+      </div>
+
+      {/* ---- 调度器控制栏 ---- */}
+      <div className="rounded-lg border border-white/10 bg-black/20 px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+        {/* 左：调度器状态 */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                schedulerStatus?.state === "running"
+                  ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                  : schedulerStatus?.state === "paused"
+                  ? "bg-amber-400 animate-pulse"
+                  : "bg-white/20"
+              }`}
+            />
+            <span className="text-xs text-white/70">调度器</span>
+            {schedulerLoading ? (
+              <span className="text-[10px] text-white/40">加载中…</span>
+            ) : (
+              <span
+                className={`text-xs font-medium ${
+                  schedulerStatus?.state === "running"
+                    ? "text-emerald-400"
+                    : schedulerStatus?.state === "paused"
+                    ? "text-amber-400"
+                    : "text-white/40"
+                }`}
+              >
+                {schedulerStatus?.state === "running"
+                  ? "运行中"
+                  : schedulerStatus?.state === "paused"
+                  ? "已暂停"
+                  : schedulerStatus?.state === "stopped"
+                  ? "已停止"
+                  : "未知"}
+              </span>
+            )}
+          </div>
+          {schedulerStatus && (
+            <span className="text-[10px] text-white/40">
+              活跃 {schedulerStatus.active_jobs.length} · 暂停 {schedulerStatus.paused_jobs.length} · 后台 {schedulerStatus.background_tasks}
+            </span>
+          )}
+        </div>
+
+        {/* 右：操作按钮 */}
+        <div className="flex items-center gap-2">
+          {schedulerStatus?.state === "paused" ? (
+            <button
+              type="button"
+              onClick={() => resumeMut.mutate()}
+              disabled={resumeMut.isPending}
+              className="px-3 py-1.5 text-xs rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+            >
+              {resumeMut.isPending ? "恢复中…" : "恢复调度"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => pauseMut.mutate()}
+              disabled={pauseMut.isPending || schedulerStatus?.state === "stopped"}
+              className="px-3 py-1.5 text-xs rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+            >
+              {pauseMut.isPending ? "暂停中…" : "暂停调度"}
+            </button>
+          )}
+
+          {!cancelAllConfirm ? (
+            <button
+              type="button"
+              onClick={() => setCancelAllConfirm(true)}
+              disabled={cancelAllMut.isPending}
+              className="px-3 py-1.5 text-xs rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+            >
+              取消全部任务
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-red-300">确定？</span>
+              <button
+                type="button"
+                onClick={() => {
+                  cancelAllMut.mutate();
+                  setCancelAllConfirm(false);
+                }}
+                disabled={cancelAllMut.isPending}
+                className="px-2.5 py-1 text-xs rounded bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50 transition-colors"
+              >
+                {cancelAllMut.isPending ? "取消中…" : "确认"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCancelAllConfirm(false)}
+                className="px-2.5 py-1 text-xs rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
+              >
+                算了
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {tasks && tasks.length > 0 ? (
@@ -228,7 +374,7 @@ export function SyncTaskLogViewer() {
         <div className="rounded-lg border border-white/10 bg-black/20 p-8 text-center">
           <p className="text-sm text-white/40">今天还没有同步任务</p>
           <p className="mt-1 text-xs text-white/30">
-            可以在"任务管理"中手动触发采集任务
+            可以在"采集监控"中查看调度器状态或手动触发操作
           </p>
         </div>
       )}

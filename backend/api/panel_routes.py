@@ -7,7 +7,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..core.domain import VALID_ACTIONS, query_mengla
-from ..infra import database
 from ..utils.period import period_keys_in_range
 from ..utils.dashboard import get_panel_config, update_panel_config
 from ..scheduler import PANEL_TASKS
@@ -128,15 +127,6 @@ async def panel_put_config(body: PanelConfigUpdate):
     """Update industry panel config (modules and/or layout). Persisted to JSON."""
     updated = update_panel_config(modules=body.modules, layout=body.layout)
     return updated
-
-
-@router.get("/tasks", dependencies=[Depends(require_admin)])
-async def panel_list_tasks():
-    """List industry panel related tasks (for admin center)."""
-    return [
-        {"id": task_id, "name": info["name"], "description": info.get("description", "")}
-        for task_id, info in PANEL_TASKS.items()
-    ]
 
 
 @router.post("/tasks/{task_id}/run", dependencies=[Depends(require_admin)])

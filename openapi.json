@@ -1018,43 +1018,6 @@
         }
       }
     },
-    "/api/panel/tasks": {
-      "get": {
-        "tags": ["面板配置"],
-        "summary": "获取面板任务列表",
-        "description": "列出行业面板相关的可用任务",
-        "operationId": "getPanelTasks",
-        "security": [{ "BearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": { "type": "string", "description": "任务 ID" },
-                      "name": { "type": "string", "description": "任务名称" },
-                      "description": { "type": "string", "description": "任务描述" }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未认证",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/panel/tasks/{task_id}/run": {
       "post": {
         "tags": ["面板配置"],

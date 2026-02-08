@@ -15,6 +15,16 @@ from ..utils.period import format_for_collect_api, normalize_granularity, period
 logger = logging.getLogger(__name__)
 
 
+def _safe_int_env(key: str, default: int) -> int:
+    raw = os.getenv(key)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return default
+
+
 @dataclass
 class MengLaQueryParams:
     action: str
@@ -40,13 +50,91 @@ class MengLaQueryParams:
         return body
 
 
+# ==============================================================================
+# 全局请求压力指标（供健康监控面板读取）
+# ==============================================================================
+class RequestPressure:
+    """跟踪外部采集系统的请求压力，所有指标线程安全。"""
+
+    def __init__(self) -> None:
+        self.max_inflight: int = _safe_int_env("MAX_INFLIGHT_REQUESTS", 3)
+        self._inflight: int = 0
+        self._waiting: int = 0  # 等待获取信号量的任务数
+        self._total_sent: int = 0
+        self._total_completed: int = 0
+        self._total_timeout: int = 0
+        self._total_error: int = 0
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        """请求进入排队，获取到 slot 后才能发送请求"""
+        async with self._lock:
+            self._waiting += 1
+        try:
+            await self._semaphore.acquire()
+        finally:
+            async with self._lock:
+                self._waiting -= 1
+                self._inflight += 1
+                self._total_sent += 1
+
+    async def release(self, *, timeout: bool = False, error: bool = False) -> None:
+        """请求完成（成功/超时/错误），释放 slot"""
+        async with self._lock:
+            self._inflight = max(0, self._inflight - 1)
+            self._total_completed += 1
+            if timeout:
+                self._total_timeout += 1
+            if error:
+                self._total_error += 1
+        self._semaphore.release()
+
+    @property
+    def _semaphore(self) -> asyncio.Semaphore:
+        # 惰性创建（必须在事件循环中）
+        if not hasattr(self, "_sem"):
+            self._sem = asyncio.Semaphore(self.max_inflight)
+        return self._sem
+
+    def snapshot(self) -> Dict[str, Any]:
+        """返回当前压力快照（无锁读取，dashboard 用）"""
+        return {
+            "max_inflight": self.max_inflight,
+            "inflight": self._inflight,
+            "waiting": self._waiting,
+            "total_sent": self._total_sent,
+            "total_completed": self._total_completed,
+            "total_timeout": self._total_timeout,
+            "total_error": self._total_error,
+        }
+
+
+# 全局单例
+_request_pressure: Optional[RequestPressure] = None
+
+
+def get_request_pressure() -> RequestPressure:
+    global _request_pressure
+    if _request_pressure is None:
+        _request_pressure = RequestPressure()
+    return _request_pressure
+
+
 class MengLaService:
-    """萌啦数据采集服务：频控 5s，执行任务后轮询 Redis 等待 webhook 结果"""
+    """
+    萌啦数据采集服务
+
+    限流策略（三层保护）：
+    1. MIN_REQUEST_INTERVAL = 5s  — 两次 HTTP 请求之间至少间隔 5 秒
+    2. MAX_INFLIGHT（全局信号量）— 同时等待 webhook 结果的请求数上限（默认 3）
+    3. 渐进退避轮询              — webhook 等待期间逐步放缓轮询频率
+    """
 
     MIN_REQUEST_INTERVAL = 5.0
 
     def __init__(self) -> None:
         self._last_request_time = 0.0
+        self._pressure = get_request_pressure()
 
     async def _wait_for_interval(self) -> None:
         now = time.time()
@@ -184,44 +272,70 @@ class MengLaService:
             except ValueError:
                 timeout_seconds = 300
 
-        execution_id = await self._request_mengla(params)
-        exec_key = f"mengla:exec:{execution_id}"
+        pressure = self._pressure
+        snap = pressure.snapshot()
+        if snap["waiting"] > 0:
+            logger.info(
+                "[MengLa] queued — inflight=%d/%d waiting=%d action=%s",
+                snap["inflight"], snap["max_inflight"], snap["waiting"], params.action,
+            )
 
-        deadline = time.time() + timeout_seconds
-        start_time = time.time()
-        poll_count = 0
-        last_log_sec = 0
+        # 全局信号量：限制同时在外部采集系统的 in-flight 请求数
+        await pressure.acquire()
+        is_timeout = False
+        is_error = False
+        try:
+            execution_id = await self._request_mengla(params)
+            exec_key = f"mengla:exec:{execution_id}"
 
-        while time.time() < deadline:
-            data = await database.redis_client.get(exec_key)
-            poll_count += 1
-            elapsed = time.time() - start_time
+            deadline = time.time() + timeout_seconds
+            start_time = time.time()
+            poll_count = 0
+            last_log_sec = 0
 
-            if data is not None:
-                logger.info("[MengLa] webhook_ok id=%s polls=%s sec=%.1f", execution_id, poll_count, elapsed)
-                # 消费后删除 exec key，避免堆积
-                try:
-                    await database.redis_client.delete(exec_key)
-                except Exception:
-                    pass
-                return json.loads(data)
+            while time.time() < deadline:
+                data = await database.redis_client.get(exec_key)
+                poll_count += 1
+                elapsed = time.time() - start_time
 
-            if int(elapsed) >= last_log_sec + 30:
-                logger.info("[MengLa] polling id=%s polls=%s sec=%.1f", execution_id, poll_count, elapsed)
-                last_log_sec = int(elapsed)
+                if data is not None:
+                    logger.info("[MengLa] webhook_ok id=%s polls=%s sec=%.1f", execution_id, poll_count, elapsed)
+                    # 消费后删除 exec key，避免堆积
+                    try:
+                        await database.redis_client.delete(exec_key)
+                    except Exception:
+                        pass
+                    return json.loads(data)
 
-            # 渐进退避：前 30s 快速轮询，之后逐步放缓
-            if elapsed < 30:
-                await asyncio.sleep(0.1)     # 前 30 秒: 100ms（webhook 通常 30s 内返回）
-            elif elapsed < 120:
-                await asyncio.sleep(1.0)     # 30s-2min: 1 秒
-            elif elapsed < 300:
-                await asyncio.sleep(5.0)     # 2-5min: 5 秒
-            else:
-                await asyncio.sleep(10.0)    # 5min+: 10 秒
+                if int(elapsed) >= last_log_sec + 30:
+                    logger.info(
+                        "[MengLa] polling id=%s polls=%s sec=%.1f inflight=%d/%d",
+                        execution_id, poll_count, elapsed,
+                        pressure._inflight, pressure.max_inflight,
+                    )
+                    last_log_sec = int(elapsed)
 
-        logger.warning("[MengLa] timeout id=%s polls=%s sec=%s", execution_id, poll_count, timeout_seconds)
-        raise TimeoutError(f"查询超时（等待 webhook 超过 {timeout_seconds} 秒）")
+                # 渐进退避：前 30s 快速轮询，之后逐步放缓
+                if elapsed < 30:
+                    await asyncio.sleep(0.1)     # 前 30 秒: 100ms（webhook 通常 30s 内返回）
+                elif elapsed < 120:
+                    await asyncio.sleep(1.0)     # 30s-2min: 1 秒
+                elif elapsed < 300:
+                    await asyncio.sleep(5.0)     # 2-5min: 5 秒
+                else:
+                    await asyncio.sleep(10.0)    # 5min+: 10 秒
+
+            is_timeout = True
+            logger.warning("[MengLa] timeout id=%s polls=%s sec=%s", execution_id, poll_count, timeout_seconds)
+            raise TimeoutError(f"查询超时（等待 webhook 超过 {timeout_seconds} 秒）")
+
+        except TimeoutError:
+            raise
+        except Exception:
+            is_error = True
+            raise
+        finally:
+            await pressure.release(timeout=is_timeout, error=is_error)
 
 
 _singleton_service: Optional[MengLaService] = None

@@ -1,19 +1,18 @@
 import { useEffect, useState, useCallback } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   fetchCollectHealth,
-  fetchSchedulerStatus,
-  pauseScheduler,
-  resumeScheduler,
   cancelAllTasks,
   purgeAllData,
   type CollectHealthResponse,
   type ActionStat,
   type EmptyStreak,
   type RecentRecord,
+  type MongoStatus,
+  type RedisStatus,
+  type RequestPressure,
 } from "../../services/mengla-admin-api";
-import { REFETCH_INTERVALS } from "../../constants";
 
 /* ---------- 常量 ---------- */
 const ACTION_LABELS: Record<string, string> = {
@@ -32,6 +31,13 @@ const LEVEL_STYLES: Record<string, { bg: string; text: string; label: string }> 
 
 /* ---------- 子组件 ---------- */
 
+const COLOR_MAP: Record<string, string> = {
+  white: "text-white",
+  "amber-400": "text-amber-400",
+  "red-400": "text-red-400",
+  "emerald-400": "text-emerald-400",
+};
+
 function StatCard({
   label,
   value,
@@ -43,10 +49,11 @@ function StatCard({
   sub?: string;
   color?: string;
 }) {
+  const colorClass = COLOR_MAP[color] || "text-white";
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
       <p className="text-[10px] tracking-wider text-white/40 uppercase">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold text-${color}`}>{value}</p>
+      <p className={`mt-1 text-2xl font-semibold ${colorClass}`}>{value}</p>
       {sub && <p className="mt-0.5 text-[10px] text-white/40">{sub}</p>}
     </div>
   );
@@ -131,92 +138,278 @@ function RecentRecordRow({ record }: { record: RecentRecord }) {
   );
 }
 
-/* ========== 调度器控制面板 ========== */
-function SchedulerControl() {
-  const queryClient = useQueryClient();
-  const { data: status, isLoading } = useQuery({
-    queryKey: ["scheduler-status"],
-    queryFn: fetchSchedulerStatus,
-    refetchInterval: REFETCH_INTERVALS.scheduler,
-  });
+/* ========== 基础设施状态面板 ========== */
 
-  const pauseMut = useMutation({
-    mutationFn: pauseScheduler,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["scheduler-status"] }),
-  });
-  const resumeMut = useMutation({
-    mutationFn: resumeScheduler,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["scheduler-status"] }),
-  });
+function StatusDot({ ok }: { ok: boolean }) {
+  return (
+    <span
+      className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+        ok ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]" : "bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.5)]"
+      }`}
+    />
+  );
+}
 
-  const isPaused = status?.state === "paused";
-  const stateLabel = status?.state === "running" ? "运行中" : status?.state === "paused" ? "已暂停" : status?.state === "stopped" ? "已停止" : "未知";
-  const stateColor = status?.state === "running" ? "text-emerald-400" : status?.state === "paused" ? "text-amber-400" : "text-white/40";
+function formatUptime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+}
+
+function InfraStatus({ mongo, redis }: { mongo: MongoStatus; redis: RedisStatus }) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* MongoDB */}
+      <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <StatusDot ok={mongo.ok} />
+          <h3 className="text-xs font-semibold text-white">MongoDB</h3>
+          {mongo.latency_ms != null && (
+            <span
+              className={`ml-auto text-[10px] font-mono ${
+                mongo.latency_ms < 50
+                  ? "text-emerald-400"
+                  : mongo.latency_ms < 200
+                  ? "text-amber-400"
+                  : "text-red-400"
+              }`}
+            >
+              {mongo.latency_ms}ms
+            </span>
+          )}
+        </div>
+
+        {mongo.error ? (
+          <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1.5">
+            {mongo.error === "timeout" ? "连接超时 — MongoDB 可能负载过高" : mongo.error}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {/* 连接 */}
+            {mongo.connections && (
+              <div>
+                <p className="text-[10px] text-white/40 mb-1">连接</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-white/5 rounded px-2 py-1.5">
+                    <p className="text-[10px] text-white/40">当前</p>
+                    <p className="text-sm font-semibold text-white">{mongo.connections.current}</p>
+                  </div>
+                  <div className="bg-white/5 rounded px-2 py-1.5">
+                    <p className="text-[10px] text-white/40">可用</p>
+                    <p className="text-sm font-semibold text-white">{mongo.connections.available}</p>
+                  </div>
+                  <div className="bg-white/5 rounded px-2 py-1.5">
+                    <p className="text-[10px] text-white/40">累计创建</p>
+                    <p className="text-sm font-semibold text-white/70">{mongo.connections.total_created}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* 操作计数 */}
+            {mongo.opcounters && (
+              <div>
+                <p className="text-[10px] text-white/40 mb-1">操作计数</p>
+                <div className="grid grid-cols-3 gap-1">
+                  {(["insert", "query", "update", "delete", "getmore", "command"] as const).map(
+                    (op) => (
+                      <div key={op} className="flex items-center justify-between px-2 py-1 bg-white/5 rounded text-[10px]">
+                        <span className="text-white/40">{op}</span>
+                        <span className="text-white/70 font-mono">
+                          {(mongo.opcounters![op] ?? 0).toLocaleString()}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+            {/* 内存 */}
+            {mongo.memory_mb && (
+              <div className="flex gap-3 text-[10px]">
+                <span className="text-white/40">
+                  内存: <span className="text-white/70">{mongo.memory_mb.resident} MB (res)</span>
+                </span>
+                <span className="text-white/40">
+                  <span className="text-white/70">{mongo.memory_mb.virtual} MB (virt)</span>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Redis */}
+      <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <StatusDot ok={redis.ok} />
+          <h3 className="text-xs font-semibold text-white">Redis</h3>
+          {redis.version && (
+            <span className="text-[10px] text-white/30 font-mono">v{redis.version}</span>
+          )}
+          {redis.latency_ms != null && (
+            <span
+              className={`ml-auto text-[10px] font-mono ${
+                redis.latency_ms < 10
+                  ? "text-emerald-400"
+                  : redis.latency_ms < 50
+                  ? "text-amber-400"
+                  : "text-red-400"
+              }`}
+            >
+              {redis.latency_ms}ms
+            </span>
+          )}
+        </div>
+
+        {redis.error ? (
+          <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1.5">
+            {redis.error === "timeout" ? "连接超时 — Redis 可能阻塞" : redis.error}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {/* 关键指标 */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-white/5 rounded px-2 py-1.5">
+                <p className="text-[10px] text-white/40">客户端</p>
+                <p className="text-sm font-semibold text-white">
+                  {redis.connected_clients ?? 0}
+                  {(redis.blocked_clients ?? 0) > 0 && (
+                    <span className="text-red-400 text-[10px] ml-1">
+                      ({redis.blocked_clients} blocked)
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div className="bg-white/5 rounded px-2 py-1.5">
+                <p className="text-[10px] text-white/40">Key 总数</p>
+                <p className="text-sm font-semibold text-white">{(redis.total_keys ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="bg-white/5 rounded px-2 py-1.5">
+                <p className="text-[10px] text-white/40">OPS/s</p>
+                <p className="text-sm font-semibold text-white">{redis.ops_per_sec ?? 0}</p>
+              </div>
+            </div>
+            {/* 内存 & 命中率 */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-white/5 rounded px-2 py-1.5">
+                <p className="text-[10px] text-white/40">内存使用</p>
+                <p className="text-xs font-semibold text-white">{redis.used_memory_human ?? "?"}</p>
+                <p className="text-[10px] text-white/30">峰值 {redis.used_memory_peak_human ?? "?"}</p>
+              </div>
+              <div className="bg-white/5 rounded px-2 py-1.5">
+                <p className="text-[10px] text-white/40">命中率</p>
+                <p
+                  className={`text-sm font-semibold ${
+                    (redis.hit_rate ?? 0) >= 90
+                      ? "text-emerald-400"
+                      : (redis.hit_rate ?? 0) >= 70
+                      ? "text-amber-400"
+                      : "text-red-400"
+                  }`}
+                >
+                  {redis.hit_rate ?? 0}%
+                </p>
+              </div>
+              <div className="bg-white/5 rounded px-2 py-1.5">
+                <p className="text-[10px] text-white/40">运行时间</p>
+                <p className="text-xs font-semibold text-white">
+                  {redis.uptime_seconds ? formatUptime(redis.uptime_seconds) : "?"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ========== 请求压力面板 ========== */
+function RequestPressurePanel({ pressure }: { pressure: RequestPressure }) {
+  const usage = pressure.max_inflight > 0
+    ? Math.round((pressure.inflight / pressure.max_inflight) * 100)
+    : 0;
+  const barColor =
+    usage >= 100
+      ? "bg-red-500"
+      : usage >= 66
+      ? "bg-amber-500"
+      : "bg-emerald-500";
+  const statusText =
+    pressure.waiting > 0
+      ? "排队中"
+      : pressure.inflight > 0
+      ? "活跃"
+      : "空闲";
+  const statusColor =
+    pressure.waiting > 0
+      ? "text-amber-400"
+      : pressure.inflight > 0
+      ? "text-emerald-400"
+      : "text-white/40";
 
   return (
     <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-xs font-semibold text-white">调度器状态</h3>
-          {isLoading ? (
-            <p className="text-[10px] text-white/40 mt-1">加载中…</p>
-          ) : (
-            <p className="text-[10px] text-white/50 mt-1">
-              <span className={stateColor}>{stateLabel}</span> · 
-              活跃任务 {status?.active_jobs.length ?? 0} · 
-              已暂停 {status?.paused_jobs.length ?? 0} · 
-              后台任务 {status?.background_tasks ?? 0}
-            </p>
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+              pressure.waiting > 0
+                ? "bg-amber-400 animate-pulse"
+                : pressure.inflight > 0
+                ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                : "bg-white/20"
+            }`}
+          />
+          <h3 className="text-xs font-semibold text-white">外部采集请求</h3>
+        </div>
+        <span className={`text-[10px] font-medium ${statusColor}`}>{statusText}</span>
+      </div>
+
+      {/* 占用率条 */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] text-white/40">
+            并发占用 {pressure.inflight}/{pressure.max_inflight}
+          </span>
+          {pressure.waiting > 0 && (
+            <span className="text-[10px] text-amber-400 animate-pulse">
+              {pressure.waiting} 个请求排队等待
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {isPaused ? (
-            <button
-              type="button"
-              onClick={() => resumeMut.mutate()}
-              disabled={resumeMut.isPending}
-              className="px-3 py-1.5 text-[10px] rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
-            >
-              {resumeMut.isPending ? "恢复中…" : "恢复调度"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => pauseMut.mutate()}
-              disabled={pauseMut.isPending}
-              className="px-3 py-1.5 text-[10px] rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
-            >
-              {pauseMut.isPending ? "暂停中…" : "暂停调度"}
-            </button>
-          )}
+        <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+          <div
+            className={`h-full ${barColor} rounded-full transition-all duration-500`}
+            style={{ width: `${Math.min(usage, 100)}%` }}
+          />
         </div>
       </div>
 
-      {(pauseMut.isError || resumeMut.isError) && (
-        <p className="text-[10px] text-red-400">
-          {String(pauseMut.error || resumeMut.error)}
-        </p>
-      )}
-
-      {/* 定时任务列表 */}
-      {status && status.active_jobs.length + status.paused_jobs.length > 0 && (
-        <div className="mt-2 space-y-1">
-          <p className="text-[10px] font-mono text-white/40">定时任务</p>
-          <div className="grid gap-1">
-            {[...status.active_jobs, ...status.paused_jobs].map((job) => (
-              <div
-                key={job.id}
-                className="flex items-center justify-between px-3 py-1.5 rounded bg-white/5 text-[10px]"
-              >
-                <span className="text-white/70">{job.name}</span>
-                <span className={job.next_run === "None" ? "text-amber-400/70" : "text-white/40"}>
-                  {job.next_run === "None" ? "已暂停" : job.next_run}
-                </span>
-              </div>
-            ))}
-          </div>
+      {/* 统计 */}
+      <div className="grid grid-cols-4 gap-2">
+        <div className="bg-white/5 rounded px-2 py-1.5">
+          <p className="text-[10px] text-white/40">已发送</p>
+          <p className="text-sm font-semibold text-white">{pressure.total_sent}</p>
         </div>
-      )}
+        <div className="bg-white/5 rounded px-2 py-1.5">
+          <p className="text-[10px] text-white/40">已完成</p>
+          <p className="text-sm font-semibold text-emerald-400">{pressure.total_completed}</p>
+        </div>
+        <div className="bg-white/5 rounded px-2 py-1.5">
+          <p className="text-[10px] text-white/40">超时</p>
+          <p className={`text-sm font-semibold ${pressure.total_timeout > 0 ? "text-amber-400" : "text-white/50"}`}>
+            {pressure.total_timeout}
+          </p>
+        </div>
+        <div className="bg-white/5 rounded px-2 py-1.5">
+          <p className="text-[10px] text-white/40">错误</p>
+          <p className={`text-sm font-semibold ${pressure.total_error > 0 ? "text-red-400" : "text-white/50"}`}>
+            {pressure.total_error}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -556,8 +749,11 @@ export function CollectHealthMonitor() {
         </div>
       </div>
 
-      {/* 调度器控制 */}
-      <SchedulerControl />
+      {/* 请求压力 */}
+      <RequestPressurePanel pressure={data.request_pressure} />
+
+      {/* 基础设施状态 */}
+      <InfraStatus mongo={data.mongo_status} redis={data.redis_status} />
 
       {/* 危险操作 */}
       <DangerZone />

@@ -162,8 +162,59 @@ export interface RecentRecord {
   source: string;
 }
 
+export interface MongoStatus {
+  ok: boolean;
+  error?: string;
+  latency_ms?: number;
+  connections?: {
+    current: number;
+    available: number;
+    total_created: number;
+  };
+  opcounters?: {
+    insert: number;
+    query: number;
+    update: number;
+    delete: number;
+    getmore: number;
+    command: number;
+  };
+  memory_mb?: {
+    resident: number;
+    virtual: number;
+  };
+}
+
+export interface RedisStatus {
+  ok: boolean;
+  error?: string;
+  latency_ms?: number;
+  version?: string;
+  connected_clients?: number;
+  blocked_clients?: number;
+  used_memory_human?: string;
+  used_memory_peak_human?: string;
+  total_keys?: number;
+  ops_per_sec?: number;
+  hit_rate?: number;
+  uptime_seconds?: number;
+}
+
+export interface RequestPressure {
+  max_inflight: number;
+  inflight: number;
+  waiting: number;
+  total_sent: number;
+  total_completed: number;
+  total_timeout: number;
+  total_error: number;
+}
+
 export interface CollectHealthResponse {
   date: string;
+  mongo_status: MongoStatus;
+  redis_status: RedisStatus;
+  request_pressure: RequestPressure;
   action_stats: Record<string, ActionStat>;
   empty_streaks: EmptyStreak[];
   exec_key_count: number;

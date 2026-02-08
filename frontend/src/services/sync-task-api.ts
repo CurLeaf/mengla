@@ -61,17 +61,6 @@ export async function fetchTodaySyncTasks(): Promise<SyncTaskLog[]> {
 }
 
 /**
- * 获取单个同步任务的详情
- */
-export async function fetchSyncTaskDetail(logId: string): Promise<SyncTaskLog> {
-  const resp = await authFetch(`${API_BASE}/api/sync-tasks/${logId}`);
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch sync task detail: ${resp.status}`);
-  }
-  return resp.json();
-}
-
-/**
  * 取消一个运行中的同步任务
  */
 export async function cancelSyncTask(logId: string): Promise<CancelSyncTaskResponse> {

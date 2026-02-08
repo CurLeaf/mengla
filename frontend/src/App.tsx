@@ -16,9 +16,6 @@ const MODES = [
   { key: "chance", path: "/chance", name: "潜力Top行业", badge: "CHANCE" },
 ] as const;
 
-// 管理中心始终展示（已有登录认证保护）
-const SHOW_ADMIN_CENTER = true;
-
 /** 通过 Outlet context 向子路由传递的数据 */
 export interface LayoutContext {
   primaryCatId: string;
@@ -181,51 +178,49 @@ export default function App() {
               </NavLink>
             ))}
             {/* ---------- 管理中心（可折叠） ---------- */}
-            {SHOW_ADMIN_CENTER && (
-              <div className="mt-2">
-                <button
-                  type="button"
-                  onClick={() => setAdminExpanded((prev) => !prev)}
-                  className={`w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors cursor-pointer ${
-                    location.pathname.startsWith("/admin")
-                      ? "text-white"
-                      : "text-white/65 hover:bg-white/5"
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setAdminExpanded((prev) => !prev)}
+                className={`w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors cursor-pointer ${
+                  location.pathname.startsWith("/admin")
+                    ? "text-white"
+                    : "text-white/65 hover:bg-white/5"
+                }`}
+              >
+                <span>管理中心</span>
+                <svg
+                  className={`w-3 h-3 text-white/45 transition-transform duration-200 ${
+                    adminExpanded ? "rotate-90" : ""
                   }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
                 >
-                  <span>管理中心</span>
-                  <svg
-                    className={`w-3 h-3 text-white/45 transition-transform duration-200 ${
-                      adminExpanded ? "rotate-90" : ""
-                    }`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-                {adminExpanded && (
-                  <div>
-                    {ADMIN_SECTIONS.map(({ id, path, label }) => (
-                      <NavLink
-                        key={id}
-                        to={path}
-                        className={({ isActive }: { isActive: boolean }) =>
-                          `w-full flex items-center px-5 pl-8 py-2 text-xs transition-colors ${
-                            isActive
-                              ? "bg-white/10 text-white"
-                              : "text-white/55 hover:bg-white/5 hover:text-white/75"
-                          }`
-                        }
-                      >
-                        {label}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              {adminExpanded && (
+                <div>
+                  {ADMIN_SECTIONS.map(({ id, path, label }) => (
+                    <NavLink
+                      key={id}
+                      to={path}
+                      className={({ isActive }: { isActive: boolean }) =>
+                        `w-full flex items-center px-5 pl-8 py-2 text-xs transition-colors ${
+                          isActive
+                            ? "bg-white/10 text-white"
+                            : "text-white/55 hover:bg-white/5 hover:text-white/75"
+                        }`
+                      }
+                    >
+                      {label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
             <NavLink
               to="/token"
               className={({ isActive }: { isActive: boolean }) =>

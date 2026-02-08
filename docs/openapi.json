@@ -130,14 +130,6 @@
           "layout": { "type": "object", "nullable": true }
         }
       },
-      "PanelTask": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string" },
-          "name": { "type": "string" },
-          "description": { "type": "string" }
-        }
-      },
       "DataFillRequest": {
         "type": "object",
         "required": ["granularity", "startDate", "endDate"],
@@ -394,15 +386,6 @@
         "security": [{ "BearerAuth": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PanelConfigUpdate" } } } },
         "responses": { "200": { "description": "更新成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PanelConfig" } } } } }
-      }
-    },
-    "/api/panel/tasks": {
-      "get": {
-        "tags": ["面板配置"],
-        "summary": "获取任务列表",
-        "operationId": "getPanelTasks",
-        "security": [{ "BearerAuth": [] }],
-        "responses": { "200": { "description": "任务列表", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PanelTask" } } } } } }
       }
     },
     "/api/panel/tasks/{task_id}/run": {
