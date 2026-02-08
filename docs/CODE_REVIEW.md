@@ -110,8 +110,8 @@
 
 - **文件：** `backend/api/compat.py`、`backend/main.py`
 - **问题：** 旧路径重定向（`/panel/*` → `/api/panel/*`）仍在注册，验证无误后应移除
-- [ ] 确认前端所有调用已迁移到 `/api/*` 前缀
-- [ ] 移除 `compat.py` 及 `main.py` 中的注册
+- [x] 确认前端所有调用已迁移到 `/api/*` 前缀
+- [x] 移除 `compat.py` 及 `main.py` 中的注册
 
 ### 4.4 `.env.production` 中 APP_BASEURL 未更新
 
@@ -127,32 +127,32 @@
 
 - **文件：** `docker/nginx/nginx.conf`
 - **问题：** 已有 `X-Frame-Options`、`X-Content-Type-Options` 等头，但缺少 `Content-Security-Policy`
-- [ ] 添加适当的 CSP 策略
+- [x] 添加适当的 CSP 策略
 
 ### 5.2 面板配置 GET 无认证
 
 - **文件：** `backend/api/panel_routes.py`
 - **问题：** `GET /api/panel/config` 是公开端点，任何人可读取面板模块配置
-- [ ] 确认是否需要认证保护，如果是前端初始化需要则可保持公开
+- [x] 确认是否需要认证保护，如果是前端初始化需要则可保持公开
 
 ### 5.3 已废弃的 `require_panel_admin` 未删除
 
 - **文件：** `backend/api/deps.py`
 - **问题：** 旧的 `require_panel_admin` 依赖已被 `require_admin` 替代，但代码仍保留
-- [ ] 确认无引用后删除
+- [x] 确认无引用后删除
 
 ---
 
 ## 六、改进建议（低优先级）
 
-| # | 问题 | 文件 | 建议 |
-|---|------|------|------|
-| 6.1 | 调度器 cron 时间硬编码 | `scheduler.py:68-124` | 改为环境变量配置 |
-| 6.2 | 环境变量缺少类型校验 | `utils/config.py` | `int()`/`float()` 调用加 try/except |
-| 6.3 | 循环导入风险 | `panel_routes.py:140` | `_track_task` 从 `main.py` 导入，建议移到工具模块 |
-| 6.4 | 请求体大小无限制 | `main.py` | 添加 FastAPI 请求大小限制中间件 |
-| 6.5 | 队列 claim 竞态条件 | `core/queue.py:145-153` | 高并发时多 worker 可能领取重叠子任务 |
-| 6.6 | MongoDB 操作缺少事务 | `core/domain.py:533-602` | 多文档操作应使用事务保证一致性 |
+| # | 问题 | 文件 | 建议 | 状态 |
+|---|------|------|------|------|
+| 6.1 | 调度器 cron 时间硬编码 | `scheduler.py:68-124` | 改为环境变量配置 | [x] 已完成 |
+| 6.2 | 环境变量缺少类型校验 | `utils/config.py` | `int()`/`float()` 调用加 try/except | [x] 已完成 |
+| 6.3 | 循环导入风险 | `panel_routes.py:140` | `_track_task` 从 `main.py` 导入，建议移到工具模块 | [x] 已完成 |
+| 6.4 | 请求体大小无限制 | `main.py` | 添加 FastAPI 请求大小限制中间件 | [ ] 待修复 |
+| 6.5 | 队列 claim 竞态条件 | `core/queue.py:145-153` | 高并发时多 worker 可能领取重叠子任务 | [x] 已完成 |
+| 6.6 | MongoDB 操作缺少事务 | `core/domain.py:533-602` | 多文档操作应使用事务保证一致性 | [x] 已完成 |
 
 ---
 
@@ -162,6 +162,26 @@
 |------|------|
 | 侧边栏管理中心改为可折叠一级类目 | [x] 已完成 |
 | 管理中心子路由（`/admin/:section`） | [x] 已完成 |
-| scheduler `CancelledError` 未捕获 | [x] 已完成（待优化为更精确写法） |
+| scheduler `CancelledError` 未捕获 | [x] 已完成（已优化为更精确写法） |
 | 启动时清理僵尸 RUNNING 日志 | [x] 已完成 |
 | 同步日志时区转换问题 | [x] 已完成 |
+| 1.1 Webhook 签名校验 | [x] 已完成 |
+| 1.2 登录频率限制 | [x] 已完成 |
+| 2.1 前端 API_BASE 统一 | [x] 已完成 |
+| 2.2 App.tsx 硬编码 API 路径 | [x] 已完成 |
+| 2.3 scheduler.py 异常捕获过宽 | [x] 已完成 |
+| 2.4 调度任务重叠防护 | [x] 已完成 |
+| 3.1 TokenPage key 优化 | [x] 已完成 |
+| 3.2 useMenglaQuery.ts any 消除 | [x] 已完成 |
+| 3.3 SyncTaskLogViewer 拆分 | [x] 已完成 |
+| 4.1 登录审计日志 | [x] 已完成 |
+| 4.2 sync_task_log 静默失败 | [x] 已完成 |
+| 4.3 兼容路由清理 | [x] 已完成 |
+| 5.1 Nginx CSP 安全头 | [x] 已完成 |
+| 5.2 面板配置 GET 认证确认 | [x] 已完成 |
+| 5.3 废弃 require_panel_admin 删除 | [x] 已完成 |
+| 6.1 调度器 cron 配置化 | [x] 已完成 |
+| 6.2 环境变量类型校验 | [x] 已完成 |
+| 6.3 循环导入修复 | [x] 已完成 |
+| 6.5 队列 claim 竞态 | [x] 已完成 |
+| 6.6 MongoDB 多文档事务 | [x] 已完成 |

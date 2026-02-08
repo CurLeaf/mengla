@@ -15,7 +15,7 @@ export default function TokenPage() {
   const [error, setError] = useState("");
   const [tokens, setTokens] = useState<GeneratedToken[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const handleGenerate = async (e: FormEvent) => {
     e.preventDefault();
@@ -39,14 +39,14 @@ export default function TokenPage() {
     }
   };
 
-  const handleDelete = (idx: number) => {
-    if (confirmDelete === idx) {
-      setTokens((prev) => prev.filter((_, i) => i !== idx));
+  const handleDelete = (tokenValue: string) => {
+    if (confirmDelete === tokenValue) {
+      setTokens((prev) => prev.filter((t) => t.token !== tokenValue));
       setConfirmDelete(null);
     } else {
-      setConfirmDelete(idx);
+      setConfirmDelete(tokenValue);
       // 3 秒后自动取消确认状态
-      setTimeout(() => setConfirmDelete((cur) => (cur === idx ? null : cur)), 3000);
+      setTimeout(() => setConfirmDelete((cur) => (cur === tokenValue ? null : cur)), 3000);
     }
   };
 
@@ -161,14 +161,14 @@ export default function TokenPage() {
                     <span className="text-[10px] text-white/30">{item.createdAt}</span>
                     <button
                       type="button"
-                      onClick={() => handleDelete(idx)}
+                      onClick={() => handleDelete(item.token)}
                       className={`px-2 py-1 text-[11px] rounded transition-colors ${
-                        confirmDelete === idx
+                        confirmDelete === item.token
                           ? "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
                           : "bg-white/5 hover:bg-red-500/10 border border-white/10 text-white/40 hover:text-red-400 hover:border-red-500/20"
                       }`}
                     >
-                      {confirmDelete === idx ? "确认删除" : "删除"}
+                      {confirmDelete === item.token ? "确认删除" : "删除"}
                     </button>
                   </div>
                 </div>
