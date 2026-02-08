@@ -63,30 +63,12 @@ export async function submitPanelDataFill(
 }
 
 // ============================================================================
-// Panel Tasks API
+// Panel Tasks API (仅保留执行任务)
 // ============================================================================
-
-export interface PanelTask {
-  id: string;
-  name: string;
-  description: string;
-}
 
 export interface TaskStartedResponse {
   message: string;
   task_id: string;
-}
-
-/**
- * 获取任务列表
- * GET /panel/tasks
- */
-export async function fetchPanelTasks(): Promise<PanelTask[]> {
-  const resp = await authFetch(`${API_BASE}/api/panel/tasks`);
-  if (!resp.ok) {
-    throw new Error(`Failed to load panel tasks: ${resp.status}`);
-  }
-  return resp.json();
 }
 
 /**

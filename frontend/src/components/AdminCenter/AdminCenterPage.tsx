@@ -3,12 +3,11 @@ import { useParams } from "react-router-dom";
 import { AdminCenterLayout, type AdminSectionId } from "./AdminCenterLayout";
 import { ModuleManager } from "./ModuleManager";
 import { LayoutConfigManager } from "./LayoutConfigManager";
-import { DataSourceTaskManager } from "./DataSourceTaskManager";
 import { SyncTaskLogViewer } from "./SyncTaskLogViewer";
 import { PeriodDataManager } from "./PeriodDataManager";
 import { CollectHealthMonitor } from "./CollectHealthMonitor";
 
-const VALID_SECTIONS: AdminSectionId[] = ["modules", "layout", "tasks", "syncLogs", "periodData", "health"];
+const VALID_SECTIONS: AdminSectionId[] = ["modules", "layout", "syncLogs", "periodData", "health"];
 
 export const AdminCenterPage = React.memo(function AdminCenterPage() {
   const { section } = useParams<{ section?: string }>();
@@ -20,7 +19,6 @@ export const AdminCenterPage = React.memo(function AdminCenterPage() {
     <AdminCenterLayout>
       {activeSection === "modules" && <ModuleManager />}
       {activeSection === "layout" && <LayoutConfigManager />}
-      {activeSection === "tasks" && <DataSourceTaskManager />}
       {activeSection === "syncLogs" && <SyncTaskLogViewer />}
       {activeSection === "periodData" && <PeriodDataManager />}
       {activeSection === "health" && <CollectHealthMonitor />}
