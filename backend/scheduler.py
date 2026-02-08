@@ -165,29 +165,43 @@ async def run_period_collect(
 
     logger.info("Starting %s collect for period_key=%s log_id=%s", granularity, period_key, log_id)
 
+    max_parallel = CONCURRENT_CONFIG.get("max_concurrent", 5)
+
     try:
-        # 1) 非趋势接口
+        # 1) 非趋势接口 —— 同一 cat_id 的不同 action 并行
         for cat_id in top_cat_ids:
             if is_cancelled(log_id):
                 break
-            for action in NON_TREND_ACTIONS:
-                if is_cancelled(log_id):
-                    break
-                stats["total"] += 1
-                success = await _collect_with_retry(
-                    action=action,
-                    cat_id=cat_id,
-                    date_type=granularity,
-                    timest=period_key,
-                    granularity=granularity,
-                )
-                if success:
+
+            sem = asyncio.Semaphore(max_parallel)
+
+            async def _do_collect(act: str, cid: str) -> bool:
+                async with sem:
+                    return await _collect_with_retry(
+                        action=act,
+                        cat_id=cid,
+                        date_type=granularity,
+                        timest=period_key,
+                        granularity=granularity,
+                    )
+
+            tasks_batch = [_do_collect(action, cat_id) for action in NON_TREND_ACTIONS]
+            stats["total"] += len(tasks_batch)
+            results = await asyncio.gather(*tasks_batch, return_exceptions=True)
+
+            for r in results:
+                if isinstance(r, Exception):
+                    stats["failed"] += 1
+                    await update_sync_task_progress(log_id, failed_delta=1)
+                elif r:
                     stats["success"] += 1
                     await update_sync_task_progress(log_id, completed_delta=1)
                 else:
                     stats["failed"] += 1
                     await update_sync_task_progress(log_id, failed_delta=1)
-                await asyncio.sleep(random.uniform(interval * 0.5, interval * 1.5))
+
+            # 类目之间加间隔，避免上游限流
+            await asyncio.sleep(random.uniform(interval * 0.5, interval * 1.5))
 
         if is_cancelled(log_id):
             _unmark_cancelled(log_id)
@@ -375,8 +389,16 @@ async def run_backfill_check(
 
                     try:
                         doc = await collection.find_one(query)
+                        need_backfill = False
                         if doc is None:
+                            need_backfill = True
                             stats["missing"] += 1
+                        elif doc.get("is_empty", False):
+                            # 之前采集过但数据为空，重新尝试
+                            need_backfill = True
+                            stats["missing"] += 1
+
+                        if need_backfill:
                             success = await _collect_with_retry(
                                 action=action,
                                 cat_id=cat_id,

@@ -180,31 +180,45 @@ class MengLaService:
         if timeout_seconds is None:
             env_timeout = os.getenv("MENGLA_TIMEOUT_SECONDS")
             try:
-                timeout_seconds = int(env_timeout) if env_timeout else 60 * 60
+                timeout_seconds = int(env_timeout) if env_timeout else 300  # 默认 5 分钟
             except ValueError:
-                timeout_seconds = 60 * 60
+                timeout_seconds = 300
 
         execution_id = await self._request_mengla(params)
         exec_key = f"mengla:exec:{execution_id}"
 
         deadline = time.time() + timeout_seconds
+        start_time = time.time()
         poll_count = 0
         last_log_sec = 0
 
         while time.time() < deadline:
             data = await database.redis_client.get(exec_key)
             poll_count += 1
-            elapsed = time.time() - (deadline - timeout_seconds)
+            elapsed = time.time() - start_time
 
             if data is not None:
                 logger.info("[MengLa] webhook_ok id=%s polls=%s sec=%.1f", execution_id, poll_count, elapsed)
+                # 消费后删除 exec key，避免堆积
+                try:
+                    await database.redis_client.delete(exec_key)
+                except Exception:
+                    pass
                 return json.loads(data)
 
             if int(elapsed) >= last_log_sec + 30:
                 logger.info("[MengLa] polling id=%s polls=%s sec=%.1f", execution_id, poll_count, elapsed)
                 last_log_sec = int(elapsed)
 
-            await asyncio.sleep(0.1)
+            # 渐进退避：前 30s 快速轮询，之后逐步放缓
+            if elapsed < 30:
+                await asyncio.sleep(0.1)     # 前 30 秒: 100ms（webhook 通常 30s 内返回）
+            elif elapsed < 120:
+                await asyncio.sleep(1.0)     # 30s-2min: 1 秒
+            elif elapsed < 300:
+                await asyncio.sleep(5.0)     # 2-5min: 5 秒
+            else:
+                await asyncio.sleep(10.0)    # 5min+: 10 秒
 
         logger.warning("[MengLa] timeout id=%s polls=%s sec=%s", execution_id, poll_count, timeout_seconds)
         raise TimeoutError(f"查询超时（等待 webhook 超过 {timeout_seconds} 秒）")

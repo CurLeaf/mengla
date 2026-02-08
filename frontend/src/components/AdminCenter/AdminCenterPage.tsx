@@ -6,8 +6,9 @@ import { LayoutConfigManager } from "./LayoutConfigManager";
 import { DataSourceTaskManager } from "./DataSourceTaskManager";
 import { SyncTaskLogViewer } from "./SyncTaskLogViewer";
 import { PeriodDataManager } from "./PeriodDataManager";
+import { CollectHealthMonitor } from "./CollectHealthMonitor";
 
-const VALID_SECTIONS: AdminSectionId[] = ["modules", "layout", "tasks", "syncLogs", "periodData"];
+const VALID_SECTIONS: AdminSectionId[] = ["modules", "layout", "tasks", "syncLogs", "periodData", "health"];
 
 export const AdminCenterPage = React.memo(function AdminCenterPage() {
   const { section } = useParams<{ section?: string }>();
@@ -22,6 +23,7 @@ export const AdminCenterPage = React.memo(function AdminCenterPage() {
       {activeSection === "tasks" && <DataSourceTaskManager />}
       {activeSection === "syncLogs" && <SyncTaskLogViewer />}
       {activeSection === "periodData" && <PeriodDataManager />}
+      {activeSection === "health" && <CollectHealthMonitor />}
     </AdminCenterLayout>
   );
 });

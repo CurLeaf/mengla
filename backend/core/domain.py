@@ -109,8 +109,9 @@ def _build_params_hash(
 
 
 def _is_result_empty(result: Any, action: str) -> bool:
-    """判断采集结果是否为空，为空则不应更新库。"""
-    return not _should_persist_result(result, action)
+    """判断采集结果是否为空。"""
+    is_empty, _ = _check_result_empty(result, action)
+    return is_empty
 
 
 def _is_stored_data_empty(doc: Optional[Dict[str, Any]]) -> bool:
@@ -203,40 +204,86 @@ def _cached_list_empty(data: Any, action: str) -> bool:
     return True
 
 
-def _should_persist_result(result: Any, action: str) -> bool:
+def _check_result_empty(result: Any, action: str) -> Tuple[bool, str]:
     """
-    仅当采集结果成功且非空时允许落库；code != 0 或 data 为空则不写入 Mongo/Redis 缓存。
-    结构示例：highList/hotList/chanceList 为 { code, data: { list: [...] } } 或 { code, data: [...] }。
-    与 _unwrap_result_data 一致先解包 resultData。
+    检查采集结果是否为空数据。
+
+    返回 (is_empty, reason)：
+    - is_empty=False, reason="" 表示有真实数据
+    - is_empty=True, reason="..." 表示空数据，附带原因
     """
     if not isinstance(result, dict):
-        return False
+        return True, "result_not_dict"
     inner = result.get("resultData") or result.get("data") or result
     if not isinstance(inner, dict):
-        return False
+        return True, "inner_not_dict"
+
     list_key = {"high": "highList", "hot": "hotList", "chance": "chanceList"}.get(action)
     if list_key:
         lst = inner.get(list_key)
         if not isinstance(lst, dict):
-            return False
+            return True, f"{list_key}_missing"
         if lst.get("code") != 0:
-            return False
+            return True, f"code_{lst.get('code')}"
         data_val = lst.get("data")
         if data_val is None:
-            return False
-        # data 可能是数组，也可能是 { list: [], pageNo, pageSize, ... }
+            return True, "data_null"
         if isinstance(data_val, list):
             if len(data_val) == 0:
-                return False
+                return True, "list_empty"
         elif isinstance(data_val, dict):
             items = data_val.get("list") if isinstance(data_val.get("list"), list) else []
             if len(items) == 0:
-                return False
+                return True, "list_empty"
+
+    if action == "industryViewV2":
+        # 统一检查 industryViewV2 的数据是否全空
+        v2_key = "industryViewV2List"
+        v2 = inner.get(v2_key)
+        if isinstance(v2, dict):
+            v2_data = v2.get("data")
+            if isinstance(v2_data, dict):
+                all_empty = all(
+                    (isinstance(v, list) and len(v) == 0)
+                    for k, v in v2_data.items()
+                    if k != "updateTime"
+                )
+                if all_empty:
+                    return True, "v2_all_lists_empty"
+
     if action == "industryTrendRange":
         points = _get_trend_points_from_result(result)
         if not points:
-            return False
-    return True
+            return True, "trend_no_points"
+
+    return False, ""
+
+
+def _should_persist_result(result: Any, action: str) -> bool:
+    """向后兼容：仅判断结果是否应该持久化。"""
+    is_empty, _ = _check_result_empty(result, action)
+    return not is_empty
+
+
+async def _record_empty_streak(action: str, cat_id: str, is_empty: bool) -> None:
+    """记录连续空数据次数，超过阈值时发出告警。"""
+    if database.redis_client is None:
+        return
+    streak_key = f"mengla:empty_streak:{action}:{cat_id}"
+    try:
+        if is_empty:
+            count = await database.redis_client.incr(streak_key)
+            await database.redis_client.expire(streak_key, 86400 * 7)  # 7 天过期
+            if count >= 3:
+                logger.warning(
+                    "ALERT: %d consecutive empty results for action=%s cat_id=%s",
+                    count, action, cat_id,
+                )
+        else:
+            # 有数据时清零
+            await database.redis_client.delete(streak_key)
+    except Exception:
+        pass
 
 
 def _get_trend_points_from_result(result: Any) -> list:
@@ -530,75 +577,115 @@ async def _fetch_mengla_data(
             result_size,
         )
 
-        # 6. 落库：趋势按颗粒拆分为多文档写入，其他单条写入（使用新统一集合结构）
-        if _is_result_empty(result, action):
-            logger.info("MengLa skip persist (empty): action=%s", action)
-        else:
+        # 6. 落库：统一存入（含 is_empty 标记），趋势按颗粒拆分
+        is_empty, empty_reason = _check_result_empty(result, action)
+        await _record_empty_streak(action, cat_id, is_empty)
+
+        if is_empty:
+            logger.info(
+                "MengLa persist (empty data): action=%s cat_id=%s period_key=%s reason=%s",
+                action, cat_id, period_key, empty_reason,
+            )
+        if True:  # 无论是否为空都入库，方便追溯
             now = datetime.utcnow()
             ttl = get_cache_ttl(granularity)
             expired_at = get_expired_at(granularity)
             
             if is_trend:
                 points = _get_trend_points_from_result(result)
-                # 多文档写入：尝试使用事务保证一致性（需 Replica Set）
-                _session = None
-                try:
-                    if database.mongo_client is not None:
-                        _session = await database.mongo_client.start_session()
-                        _session.start_transaction()
-                except Exception:
-                    # 单节点 MongoDB 不支持事务，降级为逐条写入
+
+                if not points and is_empty:
+                    # 趋势无数据时，写入一条空记录方便追溯
+                    empty_doc = {
+                        "action": action,
+                        "cat_id": cat_id,
+                        "granularity": granularity,
+                        "period_key": period_key or "",
+                        "data": {"industryTrendRange": {"data": []}},
+                        "is_empty": True,
+                        "empty_reason": empty_reason,
+                        "source": "fresh",
+                        "created_at": now,
+                        "updated_at": now,
+                        "expired_at": expired_at,
+                    }
+                    empty_filter = {
+                        "action": action,
+                        "cat_id": cat_id,
+                        "granularity": granularity,
+                        "period_key": period_key or "",
+                    }
+                    await collection.replace_one(empty_filter, empty_doc, upsert=True)
+                    logger.info(
+                        "MengLa stored (trend empty): action=%s cat_id=%s granularity=%s",
+                        action, cat_id, granularity,
+                    )
+                else:
+                    # 多文档写入：尝试使用事务保证一致性（需 Replica Set）
                     _session = None
+                    try:
+                        if database.mongo_client is not None:
+                            _session = await database.mongo_client.start_session()
+                            _session.start_transaction()
+                    except Exception:
+                        # 单节点 MongoDB 不支持事务，降级为逐条写入
+                        _session = None
 
-                try:
-                    for point in points:
-                        if not isinstance(point, dict):
-                            continue
-                        pt_timest = point.get("timest") or ""
-                        pk = timest_to_period_key(granularity, pt_timest)
-                        doc = {
-                            "action": action,
-                            "cat_id": cat_id,
-                            "granularity": granularity,
-                            "period_key": pk,
-                            "data": {"industryTrendRange": {"data": [point]}},
-                            "source": "fresh",
-                            "created_at": now,
-                            "updated_at": now,
-                            "expired_at": expired_at,
-                        }
-                        filter_doc = {
-                            "action": action,
-                            "cat_id": cat_id,
-                            "granularity": granularity,
-                            "period_key": pk,
-                        }
-                        await collection.replace_one(
-                            filter_doc, doc, upsert=True,
-                            session=_session,
-                        )
-                        if database.redis_client is not None:
-                            rk = build_redis_data_key(action, cat_id, granularity, pk)
-                            await database.redis_client.set(
-                                rk, json.dumps(doc["data"], ensure_ascii=False), ex=ttl
+                    try:
+                        for point in points:
+                            if not isinstance(point, dict):
+                                continue
+                            pt_timest = point.get("timest") or ""
+                            pk = timest_to_period_key(granularity, pt_timest)
+                            doc = {
+                                "action": action,
+                                "cat_id": cat_id,
+                                "granularity": granularity,
+                                "period_key": pk,
+                                "data": {"industryTrendRange": {"data": [point]}},
+                                "is_empty": False,
+                                "empty_reason": "",
+                                "source": "fresh",
+                                "created_at": now,
+                                "updated_at": now,
+                                "expired_at": expired_at,
+                            }
+                            filter_doc = {
+                                "action": action,
+                                "cat_id": cat_id,
+                                "granularity": granularity,
+                                "period_key": pk,
+                            }
+                            await collection.replace_one(
+                                filter_doc, doc, upsert=True,
+                                session=_session,
                             )
-                    if _session is not None:
-                        await _session.commit_transaction()
-                except Exception:
-                    if _session is not None:
-                        await _session.abort_transaction()
-                    raise
-                finally:
-                    if _session is not None:
-                        await _session.end_session()
+                            if database.redis_client is not None:
+                                rk = build_redis_data_key(action, cat_id, granularity, pk)
+                                await database.redis_client.set(
+                                    rk, json.dumps(doc["data"], ensure_ascii=False), ex=ttl
+                                )
+                        if _session is not None:
+                            await _session.commit_transaction()
+                    except Exception:
+                        if _session is not None:
+                            await _session.abort_transaction()
+                        raise
+                    finally:
+                        if _session is not None:
+                            await _session.end_session()
 
-                logger.info(
-                    "MengLa stored (trend): action=%s cat_id=%s granularity=%s points=%s",
-                    action, cat_id, granularity, len(points),
-                )
+                    logger.info(
+                        "MengLa stored (trend): action=%s cat_id=%s granularity=%s points=%s",
+                        action, cat_id, granularity, len(points),
+                    )
             else:
                 existing_again = await collection.find_one(mongo_query)
-                if existing_again is not None and not _is_stored_data_empty(existing_again):
+                # 仅当已有非空数据且本次也非空时跳过
+                if (existing_again is not None
+                        and not _is_stored_data_empty(existing_again)
+                        and not existing_again.get("is_empty", False)
+                        and not is_empty):
                     logger.info(
                         "MengLa skip persist (exists): action=%s cat_id=%s period_key=%s",
                         action, cat_id, period_key,
@@ -610,17 +697,21 @@ async def _fetch_mengla_data(
                         "granularity": granularity,
                         "period_key": period_key,
                         "data": result,
+                        "is_empty": is_empty,
+                        "empty_reason": empty_reason if is_empty else "",
                         "source": "fresh",
                         "created_at": now,
                         "updated_at": now,
                         "expired_at": expired_at,
                     }
                     await collection.replace_one(mongo_query, doc, upsert=True)
+                    status = "stored (empty)" if is_empty else "stored"
                     logger.info(
-                        "MengLa stored: action=%s cat_id=%s granularity=%s period_key=%s",
-                        action, cat_id, granularity, period_key,
+                        "MengLa %s: action=%s cat_id=%s granularity=%s period_key=%s",
+                        status, action, cat_id, granularity, period_key,
                     )
-                    if database.redis_client is not None:
+                    # 只缓存有数据的结果到 Redis
+                    if not is_empty and database.redis_client is not None:
                         await database.redis_client.set(
                             redis_param_key, json.dumps(result, ensure_ascii=False), ex=ttl
                         )

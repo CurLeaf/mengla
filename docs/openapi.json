@@ -1,0 +1,622 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "MengLa Data Collector API",
+    "description": "萌拉行业数据采集系统 API，提供行业数据查询、采集任务管理、面板配置等功能。",
+    "version": "1.0.0",
+    "contact": {
+      "name": "MengLa Team"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://mengla.qxai666.com",
+      "description": "生产环境"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "本地开发"
+    }
+  ],
+  "tags": [
+    { "name": "Auth", "description": "认证相关：登录、Token 生成、身份验证" },
+    { "name": "MengLa 数据", "description": "萌拉行业数据查询接口" },
+    { "name": "类目数据", "description": "类目树与行业日报" },
+    { "name": "Webhook", "description": "外部采集服务回调入口" },
+    { "name": "面板配置", "description": "面板模块配置与任务管理" },
+    { "name": "同步任务", "description": "同步任务日志查看与管理" },
+    { "name": "管理运维", "description": "调度器控制、监控指标、缓存、告警、数据清理" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "通过 POST /api/auth/login 获取 token"
+      }
+    },
+    "schemas": {
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": { "type": "string", "example": "admin" },
+          "password": { "type": "string", "example": "your_password" }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "description": "JWT token" },
+          "username": { "type": "string" }
+        }
+      },
+      "GenerateTokenRequest": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "default": "api", "description": "Token 用途标签" },
+          "expires_hours": { "type": "integer", "nullable": true, "default": 8760, "description": "过期时间（小时），null 为永久" }
+        }
+      },
+      "GenerateTokenResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string" },
+          "label": { "type": "string" },
+          "expires_hours": { "type": "integer", "nullable": true }
+        }
+      },
+      "MenglaQueryParams": {
+        "type": "object",
+        "required": ["action", "dateType"],
+        "properties": {
+          "action": { "type": "string", "enum": ["high", "hot", "chance", "industryViewV2", "industryTrendRange"], "description": "查询接口类型" },
+          "catId": { "type": "string", "nullable": true, "description": "类目 ID（来自 category.json）" },
+          "dateType": { "type": "string", "enum": ["day", "month", "quarter", "year"], "description": "时间颗粒度" },
+          "timest": { "type": "string", "nullable": true, "description": "时间戳，格式 YYYY-MM-DD" },
+          "starRange": { "type": "string", "nullable": true, "description": "趋势起始日期" },
+          "endRange": { "type": "string", "nullable": true, "description": "趋势结束日期" }
+        }
+      },
+      "MenglaSpecificParams": {
+        "type": "object",
+        "required": ["catId", "dateType"],
+        "properties": {
+          "catId": { "type": "string", "description": "类目 ID" },
+          "dateType": { "type": "string", "enum": ["day", "month", "quarter", "year"] },
+          "timest": { "type": "string", "nullable": true }
+        }
+      },
+      "MenglaTrendParams": {
+        "type": "object",
+        "required": ["catId", "dateType", "starRange", "endRange"],
+        "properties": {
+          "catId": { "type": "string" },
+          "dateType": { "type": "string", "enum": ["day", "month", "quarter", "year"] },
+          "starRange": { "type": "string", "description": "起始日期 YYYY-MM-DD" },
+          "endRange": { "type": "string", "description": "结束日期 YYYY-MM-DD" }
+        }
+      },
+      "PanelConfig": {
+        "type": "object",
+        "properties": {
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "enabled": { "type": "boolean" },
+                "order": { "type": "integer" },
+                "props": { "type": "object" }
+              }
+            }
+          },
+          "layout": {
+            "type": "object",
+            "properties": {
+              "defaultPeriod": { "type": "string" },
+              "showRankPeriodSelector": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "PanelConfigUpdate": {
+        "type": "object",
+        "properties": {
+          "modules": { "type": "array", "nullable": true, "items": { "type": "object" } },
+          "layout": { "type": "object", "nullable": true }
+        }
+      },
+      "PanelTask": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      },
+      "DataFillRequest": {
+        "type": "object",
+        "required": ["granularity", "startDate", "endDate"],
+        "properties": {
+          "granularity": { "type": "string", "enum": ["day", "month", "quarter", "year"] },
+          "startDate": { "type": "string", "description": "起始日期 YYYY-MM-DD" },
+          "endDate": { "type": "string", "description": "结束日期 YYYY-MM-DD" },
+          "actions": { "type": "array", "nullable": true, "items": { "type": "string" } }
+        }
+      },
+      "MenglaStatusRequest": {
+        "type": "object",
+        "required": ["granularity", "startDate", "endDate"],
+        "properties": {
+          "catId": { "type": "string", "nullable": true },
+          "granularity": { "type": "string" },
+          "startDate": { "type": "string" },
+          "endDate": { "type": "string" },
+          "actions": { "type": "array", "nullable": true, "items": { "type": "string" } }
+        }
+      },
+      "SyncTaskLog": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "task_id": { "type": "string" },
+          "task_name": { "type": "string" },
+          "status": { "type": "string", "enum": ["RUNNING", "COMPLETED", "FAILED", "CANCELLED"] },
+          "progress": {
+            "type": "object",
+            "properties": {
+              "total": { "type": "integer" },
+              "completed": { "type": "integer" },
+              "failed": { "type": "integer" }
+            }
+          },
+          "started_at": { "type": "string", "format": "date-time" },
+          "finished_at": { "type": "string", "format": "date-time", "nullable": true },
+          "trigger": { "type": "string", "enum": ["manual", "scheduled"] },
+          "error_message": { "type": "string", "nullable": true }
+        }
+      },
+      "SchedulerStatus": {
+        "type": "object",
+        "properties": {
+          "running": { "type": "boolean" },
+          "state": { "type": "string", "enum": ["stopped", "running", "paused", "unknown"] },
+          "total_jobs": { "type": "integer" },
+          "active_jobs": { "type": "array", "items": { "type": "object" } },
+          "paused_jobs": { "type": "array", "items": { "type": "object" } },
+          "background_tasks": { "type": "integer" }
+        }
+      },
+      "WebhookPayload": {
+        "type": "object",
+        "required": ["executionId"],
+        "properties": {
+          "executionId": { "type": "string" },
+          "resultData": { "type": "object" },
+          "status": { "type": "string" },
+          "errorData": { "type": "object", "nullable": true }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "detail": { "type": "string" }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        }
+      },
+      "PurgeRequest": {
+        "type": "object",
+        "required": ["confirm"],
+        "properties": {
+          "confirm": { "type": "boolean", "description": "必须为 true" },
+          "targets": { "type": "array", "items": { "type": "string", "enum": ["mongodb", "redis", "l1"] }, "default": ["mongodb", "redis", "l1"] }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "健康检查",
+        "operationId": "healthCheck",
+        "responses": {
+          "200": { "description": "服务正常", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" } } } } } }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "登录",
+        "description": "验证用户名密码，返回 JWT token。包含登录频率限制（60 秒内最多 10 次）。",
+        "operationId": "login",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } } },
+        "responses": {
+          "200": { "description": "登录成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+          "401": { "description": "用户名或密码错误", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "429": { "description": "登录尝试过于频繁", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/auth/generate-token": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "生成 API Token",
+        "description": "生成长期 API Token（需要先登录）",
+        "operationId": "generateToken",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateTokenRequest" } } } },
+        "responses": {
+          "200": { "description": "Token 生成成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateTokenResponse" } } } },
+          "401": { "description": "未认证" }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "验证身份",
+        "description": "验证当前 token 是否有效，返回用户信息",
+        "operationId": "authMe",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Token 有效", "content": { "application/json": { "schema": { "type": "object", "properties": { "username": { "type": "string" }, "payload": { "type": "object" } } } } } },
+          "401": { "description": "Token 无效" }
+        }
+      }
+    },
+    "/api/data/mengla/query": {
+      "post": {
+        "tags": ["MengLa 数据"],
+        "summary": "统一数据查询",
+        "description": "通过 action 参数指定查询类型，支持 high/hot/chance/industryViewV2/industryTrendRange",
+        "operationId": "menglaQuery",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MenglaQueryParams" } } } },
+        "responses": {
+          "200": { "description": "查询成功", "headers": { "X-MengLa-Source": { "schema": { "type": "string" }, "description": "数据来源（cache/fresh）" } }, "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "description": "参数错误" },
+          "401": { "description": "未认证" }
+        }
+      }
+    },
+    "/api/data/mengla/high": {
+      "post": {
+        "tags": ["MengLa 数据"],
+        "summary": "蓝海Top行业",
+        "operationId": "menglaHigh",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MenglaSpecificParams" } } } },
+        "responses": { "200": { "description": "查询成功", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/data/mengla/hot": {
+      "post": {
+        "tags": ["MengLa 数据"],
+        "summary": "热销Top行业",
+        "operationId": "menglaHot",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MenglaSpecificParams" } } } },
+        "responses": { "200": { "description": "查询成功", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/data/mengla/chance": {
+      "post": {
+        "tags": ["MengLa 数据"],
+        "summary": "潜力Top行业",
+        "operationId": "menglaChance",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MenglaSpecificParams" } } } },
+        "responses": { "200": { "description": "查询成功", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/data/mengla/industry-view": {
+      "post": {
+        "tags": ["MengLa 数据"],
+        "summary": "行业总览",
+        "operationId": "menglaIndustryView",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MenglaSpecificParams" } } } },
+        "responses": { "200": { "description": "查询成功", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/data/mengla/industry-trend": {
+      "post": {
+        "tags": ["MengLa 数据"],
+        "summary": "行业趋势",
+        "operationId": "menglaIndustryTrend",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MenglaTrendParams" } } } },
+        "responses": { "200": { "description": "查询成功", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/data/categories": {
+      "get": {
+        "tags": ["类目数据"],
+        "summary": "获取类目树",
+        "operationId": "getCategories",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "类目树数据", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/data/industry/daily": {
+      "get": {
+        "tags": ["类目数据"],
+        "summary": "行业日报数据",
+        "operationId": "getIndustryDaily",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "date", "in": "query", "required": false, "schema": { "type": "string" }, "description": "日期 YYYY-MM-DD，默认昨天" }],
+        "responses": { "200": { "description": "日报数据", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/webhook/mengla-notify": {
+      "get": {
+        "tags": ["Webhook"],
+        "summary": "Webhook 健康检查",
+        "operationId": "webhookHealth",
+        "responses": { "200": { "description": "Webhook 就绪", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "message": { "type": "string" } } } } } } }
+      },
+      "post": {
+        "tags": ["Webhook"],
+        "summary": "采集结果回调",
+        "description": "外部采集服务调用此端点回传执行结果。需要 X-Signature-256 签名头（若配置了 WEBHOOK_SECRET）。",
+        "operationId": "webhookCallback",
+        "parameters": [{ "name": "X-Signature-256", "in": "header", "required": false, "schema": { "type": "string" }, "description": "HMAC-SHA256 签名，格式: sha256=<hex_digest>" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookPayload" } } } },
+        "responses": {
+          "200": { "description": "接收成功", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" } } } } } },
+          "400": { "description": "缺少 executionId" },
+          "403": { "description": "签名校验失败" }
+        }
+      }
+    },
+    "/api/panel/config": {
+      "get": {
+        "tags": ["面板配置"],
+        "summary": "获取面板配置",
+        "description": "公开端点，前端初始化时加载面板模块配置，不含敏感数据。",
+        "operationId": "getPanelConfig",
+        "responses": { "200": { "description": "面板配置", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PanelConfig" } } } } }
+      },
+      "put": {
+        "tags": ["面板配置"],
+        "summary": "更新面板配置",
+        "operationId": "updatePanelConfig",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PanelConfigUpdate" } } } },
+        "responses": { "200": { "description": "更新成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PanelConfig" } } } } }
+      }
+    },
+    "/api/panel/tasks": {
+      "get": {
+        "tags": ["面板配置"],
+        "summary": "获取任务列表",
+        "operationId": "getPanelTasks",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "任务列表", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PanelTask" } } } } } }
+      }
+    },
+    "/api/panel/tasks/{task_id}/run": {
+      "post": {
+        "tags": ["面板配置"],
+        "summary": "触发任务",
+        "operationId": "runPanelTask",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "任务 ID，如 mengla_granular_force" }],
+        "responses": {
+          "200": { "description": "任务已启动", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" }, "task_id": { "type": "string" } } } } } },
+          "404": { "description": "未知任务 ID" }
+        }
+      }
+    },
+    "/api/panel/data/fill": {
+      "post": {
+        "tags": ["面板配置"],
+        "summary": "补齐数据",
+        "description": "为指定日期范围补齐缺失的采集数据",
+        "operationId": "panelDataFill",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DataFillRequest" } } } },
+        "responses": { "200": { "description": "补齐任务已启动", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" }, "granularity": { "type": "string" }, "startDate": { "type": "string" }, "endDate": { "type": "string" }, "periodKeyCount": { "type": "integer" } } } } } } }
+      }
+    },
+    "/api/sync-tasks/today": {
+      "get": {
+        "tags": ["同步任务"],
+        "summary": "获取今日同步任务",
+        "operationId": "getTodaySyncTasks",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "任务列表", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/SyncTaskLog" } } } } } }
+      }
+    },
+    "/api/sync-tasks/{log_id}": {
+      "get": {
+        "tags": ["同步任务"],
+        "summary": "获取任务详情",
+        "operationId": "getSyncTaskDetail",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "log_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "任务详情", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncTaskLog" } } } } }
+      },
+      "delete": {
+        "tags": ["同步任务"],
+        "summary": "删除任务日志",
+        "operationId": "deleteSyncTask",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "log_id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "delete_data", "in": "query", "required": false, "schema": { "type": "boolean", "default": false }, "description": "是否同时删除采集数据" }
+        ],
+        "responses": { "200": { "description": "删除成功", "content": { "application/json": { "schema": { "type": "object", "properties": { "success": { "type": "boolean" }, "message": { "type": "string" }, "deleted_data_count": { "type": "integer" } } } } } } }
+      }
+    },
+    "/api/sync-tasks/{log_id}/cancel": {
+      "post": {
+        "tags": ["同步任务"],
+        "summary": "取消运行中的任务",
+        "operationId": "cancelSyncTask",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "log_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "取消成功", "content": { "application/json": { "schema": { "type": "object", "properties": { "success": { "type": "boolean" }, "message": { "type": "string" } } } } } } }
+      }
+    },
+    "/api/admin/mengla/status": {
+      "post": {
+        "tags": ["管理运维"],
+        "summary": "检查数据可用性",
+        "operationId": "checkMenglaStatus",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MenglaStatusRequest" } } } },
+        "responses": { "200": { "description": "数据状态", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/admin/scheduler/status": {
+      "get": {
+        "tags": ["管理运维"],
+        "summary": "获取调度器状态",
+        "operationId": "getSchedulerStatus",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "调度器状态", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SchedulerStatus" } } } } }
+      }
+    },
+    "/api/admin/scheduler/pause": {
+      "post": {
+        "tags": ["管理运维"],
+        "summary": "暂停调度器",
+        "operationId": "pauseScheduler",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "已暂停", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageResponse" } } } } }
+      }
+    },
+    "/api/admin/scheduler/resume": {
+      "post": {
+        "tags": ["管理运维"],
+        "summary": "恢复调度器",
+        "operationId": "resumeScheduler",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "已恢复", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageResponse" } } } } }
+      }
+    },
+    "/api/admin/tasks/cancel-all": {
+      "post": {
+        "tags": ["管理运维"],
+        "summary": "取消所有后台任务",
+        "operationId": "cancelAllTasks",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "取消结果", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" }, "cancelled_asyncio_tasks": { "type": "integer" }, "cancelled_sync_logs": { "type": "integer" }, "cancelled_crawl_jobs": { "type": "integer" }, "cancelled_crawl_subtasks": { "type": "integer" } } } } } } }
+      }
+    },
+    "/api/admin/data/purge": {
+      "post": {
+        "tags": ["管理运维"],
+        "summary": "清空采集数据",
+        "description": "清空 MongoDB、Redis、L1 缓存中的采集数据。需要 confirm=true 确认。",
+        "operationId": "purgeData",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PurgeRequest" } } } },
+        "responses": { "200": { "description": "清空结果", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" }, "results": { "type": "object" } } } } } } }
+      }
+    },
+    "/api/admin/metrics": {
+      "get": {
+        "tags": ["管理运维"],
+        "summary": "获取采集指标",
+        "operationId": "getMetrics",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "指标数据", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/admin/cache/stats": {
+      "get": {
+        "tags": ["管理运维"],
+        "summary": "获取缓存统计",
+        "operationId": "getCacheStats",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "缓存统计", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/admin/cache/clear-l1": {
+      "post": {
+        "tags": ["管理运维"],
+        "summary": "清除 L1 本地缓存",
+        "operationId": "clearL1Cache",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "已清除", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageResponse" } } } } }
+      }
+    },
+    "/api/admin/circuit-breakers": {
+      "get": {
+        "tags": ["管理运维"],
+        "summary": "获取熔断器状态",
+        "operationId": "getCircuitBreakers",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "熔断器状态", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/admin/circuit-breakers/reset": {
+      "post": {
+        "tags": ["管理运维"],
+        "summary": "重置所有熔断器",
+        "operationId": "resetCircuitBreakers",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "已重置", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessageResponse" } } } } }
+      }
+    },
+    "/api/admin/system/status": {
+      "get": {
+        "tags": ["管理运维"],
+        "summary": "系统综合状态",
+        "operationId": "getSystemStatus",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "系统状态", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/admin/alerts": {
+      "get": {
+        "tags": ["管理运维"],
+        "summary": "获取活跃告警",
+        "operationId": "getAlerts",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "告警列表", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/admin/alerts/history": {
+      "get": {
+        "tags": ["管理运维"],
+        "summary": "获取告警历史",
+        "operationId": "getAlertHistory",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "告警历史", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/admin/backfill": {
+      "post": {
+        "tags": ["管理运维"],
+        "summary": "历史数据补采",
+        "operationId": "backfill",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "补采已启动", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/admin/mengla/enqueue-full-crawl": {
+      "post": {
+        "tags": ["管理运维"],
+        "summary": "入队全量爬取任务",
+        "operationId": "enqueueFullCrawl",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "已入队", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    }
+  }
+}

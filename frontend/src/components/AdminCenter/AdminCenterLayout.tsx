@@ -6,6 +6,7 @@ const ADMIN_SECTIONS = [
   { id: "tasks", path: "/admin/tasks", label: "任务管理" },
   { id: "syncLogs", path: "/admin/syncLogs", label: "同步日志" },
   { id: "periodData", path: "/admin/periodData", label: "周期数据" },
+  { id: "health", path: "/admin/health", label: "采集监控" },
 ] as const;
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];

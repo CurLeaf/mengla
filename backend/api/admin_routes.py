@@ -1,10 +1,10 @@
-"""管理与运维路由：监控指标、告警、缓存、熔断器、调度器控制、数据清空"""
+"""管理与运维路由：监控指标、告警、缓存、熔断器、调度器控制、数据清空、采集健康"""
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..core.domain import VALID_ACTIONS
@@ -14,9 +14,9 @@ from ..infra.cache import get_cache_manager, warmup_cache
 from ..infra.metrics import get_metrics_collector, get_current_metrics
 from ..infra.alerting import get_alert_manager, run_alert_check
 from ..infra.resilience import get_circuit_manager
-from ..utils.category import get_all_valid_cat_ids
-from ..utils.period import period_keys_in_range
-from ..utils.config import COLLECTION_NAME
+from ..utils.category import get_all_valid_cat_ids, get_top_level_cat_ids
+from ..utils.period import period_keys_in_range, make_period_keys
+from ..utils.config import COLLECTION_NAME, REDIS_KEY_PREFIX
 from ..tools.backfill import backfill_data
 from .deps import require_admin
 
@@ -441,6 +441,133 @@ async def cancel_all_background_tasks():
         "cancelled_sync_logs": sync_updated,
         "cancelled_crawl_jobs": crawl_updated,
         "cancelled_crawl_subtasks": crawl_sub_updated,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 采集健康监控
+# ---------------------------------------------------------------------------
+@router.get("/collect-health", dependencies=[Depends(require_admin)])
+async def get_collect_health(
+    date: Optional[str] = Query(None, description="日期 yyyy-MM-dd，默认今天"),
+):
+    """
+    采集健康监控面板数据：
+    - 各 action 的空数据/有数据统计
+    - 连续空数据告警列表
+    - Redis exec key 堆积数量
+    - 轮询超时统计
+    """
+    if database.mongo_db is None:
+        raise HTTPException(status_code=500, detail="MongoDB not initialized")
+
+    target_date = date or datetime.utcnow().strftime("%Y-%m-%d")
+
+    # --- 1. 各 action 的 is_empty 统计 ---
+    coll = database.mongo_db[COLLECTION_NAME]
+    actions = ["high", "hot", "chance", "industryViewV2", "industryTrendRange"]
+    action_stats: Dict[str, Any] = {}
+
+    for action in actions:
+        pipeline = [
+            {"$match": {
+                "action": action,
+                "updated_at": {
+                    "$gte": datetime.strptime(target_date, "%Y-%m-%d"),
+                    "$lt": datetime.strptime(target_date, "%Y-%m-%d") + timedelta(days=1),
+                },
+            }},
+            {"$group": {
+                "_id": "$is_empty",
+                "count": {"$sum": 1},
+            }},
+        ]
+        cursor = coll.aggregate(pipeline)
+        results = await cursor.to_list(length=10)
+        total = 0
+        empty_count = 0
+        data_count = 0
+        for r in results:
+            total += r["count"]
+            if r["_id"] is True:
+                empty_count = r["count"]
+            else:
+                data_count = r["count"]
+        action_stats[action] = {
+            "total": total,
+            "empty": empty_count,
+            "has_data": data_count,
+            "empty_rate": round(empty_count / total, 4) if total > 0 else 0,
+        }
+
+    # --- 2. 连续空数据告警 (empty streak) ---
+    empty_streaks: List[Dict[str, Any]] = []
+    if database.redis_client is not None:
+        try:
+            cursor_val = "0"
+            while True:
+                cursor_val, keys = await database.redis_client.scan(
+                    cursor=int(cursor_val), match="mengla:empty_streak:*", count=200,
+                )
+                for key in keys:
+                    val = await database.redis_client.get(key)
+                    if val is not None:
+                        count = int(val)
+                        if count >= 2:
+                            # key = mengla:empty_streak:action:cat_id
+                            parts = key.split(":") if isinstance(key, str) else key.decode().split(":")
+                            action_name = parts[2] if len(parts) > 2 else "?"
+                            cat_id_val = parts[3] if len(parts) > 3 else "?"
+                            empty_streaks.append({
+                                "action": action_name,
+                                "cat_id": cat_id_val,
+                                "streak": count,
+                                "level": "critical" if count >= 5 else "warning" if count >= 3 else "info",
+                            })
+                if cursor_val == 0 or str(cursor_val) == "0":
+                    break
+            empty_streaks.sort(key=lambda x: x["streak"], reverse=True)
+        except Exception as e:
+            logger.warning("Failed to scan empty streaks: %s", e)
+
+    # --- 3. Redis exec key 堆积数 ---
+    exec_key_count = 0
+    if database.redis_client is not None:
+        try:
+            cursor_val = "0"
+            while True:
+                cursor_val, keys = await database.redis_client.scan(
+                    cursor=int(cursor_val), match="mengla:exec:*", count=500,
+                )
+                exec_key_count += len(keys)
+                if cursor_val == 0 or str(cursor_val) == "0":
+                    break
+        except Exception:
+            pass
+
+    # --- 4. 数据库总文档统计 ---
+    total_docs = await coll.count_documents({})
+    empty_docs = await coll.count_documents({"is_empty": True})
+
+    # --- 5. 最近采集记录 (最新 10 条) ---
+    recent_cursor = coll.find(
+        {},
+        {"action": 1, "cat_id": 1, "granularity": 1, "period_key": 1,
+         "is_empty": 1, "empty_reason": 1, "updated_at": 1, "source": 1, "_id": 0},
+    ).sort("updated_at", -1).limit(10)
+    recent_records = await recent_cursor.to_list(length=10)
+    for rec in recent_records:
+        if "updated_at" in rec and rec["updated_at"]:
+            rec["updated_at"] = rec["updated_at"].isoformat()
+
+    return {
+        "date": target_date,
+        "action_stats": action_stats,
+        "empty_streaks": empty_streaks,
+        "exec_key_count": exec_key_count,
+        "total_documents": total_docs,
+        "empty_documents": empty_docs,
+        "recent_records": recent_records,
     }
 
 

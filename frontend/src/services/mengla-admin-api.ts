@@ -151,6 +151,55 @@ export async function cancelAllTasks(): Promise<{
   return resp.json();
 }
 
+// ============================================================================
+// Collect Health API
+// ============================================================================
+
+export interface ActionStat {
+  total: number;
+  empty: number;
+  has_data: number;
+  empty_rate: number;
+}
+
+export interface EmptyStreak {
+  action: string;
+  cat_id: string;
+  streak: number;
+  level: "info" | "warning" | "critical";
+}
+
+export interface RecentRecord {
+  action: string;
+  cat_id: string;
+  granularity: string;
+  period_key: string;
+  is_empty: boolean;
+  empty_reason: string;
+  updated_at: string;
+  source: string;
+}
+
+export interface CollectHealthResponse {
+  date: string;
+  action_stats: Record<string, ActionStat>;
+  empty_streaks: EmptyStreak[];
+  exec_key_count: number;
+  total_documents: number;
+  empty_documents: number;
+  recent_records: RecentRecord[];
+}
+
+/** 获取采集健康监控数据 */
+export async function fetchCollectHealth(
+  date?: string
+): Promise<CollectHealthResponse> {
+  const params = date ? `?date=${date}` : "";
+  const resp = await authFetch(`${API_BASE}/api/admin/collect-health${params}`);
+  if (!resp.ok) throw new Error(`Failed to fetch collect health: ${resp.status}`);
+  return resp.json();
+}
+
 /** 清空所有采集数据和缓存 */
 export async function purgeAllData(
   targets: string[] = ["mongodb", "redis", "l1"]

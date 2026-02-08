@@ -231,6 +231,8 @@ REDIS_KEY_PREFIX = {
     "stats": "mengla:stats",         # 采集统计
     "circuit": "mengla:circuit",     # 熔断状态
     "rate": "mengla:rate",           # 频控计数
+    "empty_streak": "mengla:empty_streak",  # 连续空数据计数
+    "exec": "mengla:exec",          # 执行结果（webhook 回调）
 }
 
 
