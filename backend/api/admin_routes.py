@@ -343,7 +343,8 @@ async def get_system_status():
 @router.get("/scheduler/status", dependencies=[Depends(require_admin)])
 async def scheduler_status():
     """获取调度器运行状态"""
-    from ..main import scheduler as _scheduler, _background_tasks
+    from ..main import scheduler as _scheduler
+    from ..utils.tasks import _background_tasks
     from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING, STATE_STOPPED
     state_map = {STATE_STOPPED: "stopped", STATE_RUNNING: "running", STATE_PAUSED: "paused"}
     paused_jobs = []
@@ -392,7 +393,7 @@ async def scheduler_resume():
 @router.post("/tasks/cancel-all", dependencies=[Depends(require_admin)])
 async def cancel_all_background_tasks():
     """取消所有运行中的后台采集任务。"""
-    from ..main import _background_tasks
+    from ..utils.tasks import _background_tasks
     # 1) 取消 asyncio 后台任务
     cancelled_count = 0
     for task in list(_background_tasks):

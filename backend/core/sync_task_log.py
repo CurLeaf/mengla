@@ -71,6 +71,7 @@ async def create_sync_task_log(
         日志记录 ID (字符串) 或 None
     """
     if database.mongo_db is None:
+        logger.warning("MongoDB not available, cannot create sync task log for task_id=%s", task_id)
         return None
     
     now = datetime.utcnow()
@@ -109,11 +110,14 @@ async def update_sync_task_progress(
         failed_delta: 失败数增量
     """
     if database.mongo_db is None or not log_id:
+        if database.mongo_db is None:
+            logger.warning("MongoDB not available, cannot update sync task progress for log_id=%s", log_id)
         return
     
     try:
         oid = ObjectId(log_id)
     except Exception:
+        logger.warning("Invalid ObjectId for sync task progress update: log_id=%s", log_id)
         return
     
     update: Dict[str, Any] = {"$set": {"updated_at": datetime.utcnow()}}
@@ -142,11 +146,14 @@ async def finish_sync_task_log(
         error_message: 错误信息 (仅当 status=FAILED 时)
     """
     if database.mongo_db is None or not log_id:
+        if database.mongo_db is None:
+            logger.warning("MongoDB not available, cannot finish sync task log for log_id=%s", log_id)
         return
     
     try:
         oid = ObjectId(log_id)
     except Exception:
+        logger.warning("Invalid ObjectId for sync task log finish: log_id=%s", log_id)
         return
     
     now = datetime.utcnow()

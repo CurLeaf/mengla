@@ -27,7 +27,7 @@ from .core.queue import (
     finish_job_if_done,
 )
 from .utils.category import get_top_level_cat_ids
-from .utils.config import SCHEDULER_CONFIG, CRON_JOBS, CONCURRENT_CONFIG, get_collect_interval
+from .utils.config import SCHEDULER_CONFIG, CRON_JOBS, CONCURRENT_CONFIG, get_collect_interval, parse_cron_expr
 from .infra.resilience import retry_async, RetryError
 from .core.sync_task_log import (
     create_sync_task_log,
@@ -65,54 +65,27 @@ def init_scheduler() -> AsyncIOScheduler:
     """
     scheduler = AsyncIOScheduler(timezone=SCHEDULER_CONFIG["timezone"])
 
-    # Daily collect: 04:00
-    scheduler.add_job(
-        run_period_collect,
-        "cron",
-        hour=4, minute=0,
-        args=["day"],
-        id="daily_collect",
-        name="Daily Collect",
-    )
+    # 从 CRON_JOBS 配置注册定时采集任务（支持环境变量覆盖 cron 表达式）
+    _cron_job_defs = [
+        ("daily_collect",     run_period_collect,  ["day"],     "Daily Collect"),
+        ("monthly_collect",   run_period_collect,  ["month"],   "Monthly Collect"),
+        ("quarterly_collect", run_period_collect,  ["quarter"], "Quarterly Collect"),
+        ("yearly_collect",    run_period_collect,  ["year"],    "Yearly Collect"),
+        ("backfill_check",    run_backfill_check,  [],          "Backfill Check"),
+    ]
 
-    # Monthly collect: 3rd day 05:00
-    scheduler.add_job(
-        run_period_collect,
-        "cron",
-        day=3, hour=5, minute=0,
-        args=["month"],
-        id="monthly_collect",
-        name="Monthly Collect",
-    )
-
-    # Quarterly collect: 10th day after quarter end 06:00
-    scheduler.add_job(
-        run_period_collect,
-        "cron",
-        month="1,4,7,10", day=10, hour=6, minute=0,
-        args=["quarter"],
-        id="quarterly_collect",
-        name="Quarterly Collect",
-    )
-
-    # Yearly collect: Jan 20 07:00
-    scheduler.add_job(
-        run_period_collect,
-        "cron",
-        month=1, day=20, hour=7, minute=0,
-        args=["year"],
-        id="yearly_collect",
-        name="Yearly Collect",
-    )
-
-    # Backfill check: every 4 hours
-    scheduler.add_job(
-        run_backfill_check,
-        "cron",
-        hour="*/4", minute=0,
-        id="backfill_check",
-        name="Backfill Check",
-    )
+    for job_id, func, args, name in _cron_job_defs:
+        cron_expr = CRON_JOBS[job_id]["cron"]
+        cron_params = parse_cron_expr(cron_expr)
+        scheduler.add_job(
+            func,
+            "cron",
+            **cron_params,
+            args=args or None,
+            id=job_id,
+            name=name,
+        )
+        logger.info("Registered cron job: %s (%s) cron=%s", job_id, name, cron_expr)
 
     # Queue consumer: process pending crawl subtasks
     scheduler.add_job(

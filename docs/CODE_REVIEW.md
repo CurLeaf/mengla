@@ -13,14 +13,14 @@
 - **文件：** `backend/api/webhook_routes.py`
 - **问题：** `POST /api/webhook/mengla-notify` 端点没有任何认证，任何人都可以伪造回调注入数据
 - **方案：** `ROUTE_REFACTOR_PLAN.md` 第 4.2 节已设计了 `require_webhook_signature` 依赖，需实现
-- [ ] 在 `deps.py` 中实现 `require_webhook_signature`（HMAC-SHA256 签名校验）
-- [ ] 在 webhook POST 路由上添加该依赖
+- [x] 在 `deps.py` 中实现 `require_webhook_signature`（HMAC-SHA256 签名校验）
+- [x] 在 webhook POST 路由上添加该依赖
 
 ### 1.2 登录接口缺少频率限制
 
 - **文件：** `backend/api/auth_routes.py`、`backend/core/auth.py`
 - **问题：** `check_login_rate()` 函数已实现但未在 `/login` 端点中调用，容易被暴力破解
-- [ ] 在 `POST /api/auth/login` 路由中调用 `check_login_rate()`
+- [x] 在 `POST /api/auth/login` 路由中调用 `check_login_rate()`
 
 ### 1.3 JWT 永久 Token 风险
 
@@ -42,7 +42,7 @@
   - `frontend/src/services/mengla-api.ts`
   - `frontend/src/services/mengla-admin-api.ts`
   - `frontend/src/services/panel-config-api.ts`
-- [ ] 统一从 `constants.ts` 导入 `API_BASE`，删除各文件中的重复定义
+- [x] 统一从 `constants.ts` 导入 `API_BASE`，删除各文件中的重复定义
 
 ### 2.2 App.tsx 硬编码 API 路径
 
@@ -54,19 +54,19 @@
   const resp = await authFetch(`${API_BASE}/api/panel/tasks/mengla_granular_force/run`, { method: "POST" });
   ```
 
-- [ ] 提取到 `mengla-admin-api.ts` 中的 service 函数，保持 API 调用集中管理
+- [x] 提取到 `mengla-admin-api.ts` 中的 service 函数，保持 API 调用集中管理
 
 ### 2.3 scheduler.py 的异常捕获过宽
 
 - **文件：** `backend/scheduler.py`（4 处）
 - **问题：** `except BaseException` 会意外捕获 `SystemExit`，应使用更精确的写法
-- [ ] 将 `except BaseException` 改为 `except (Exception, asyncio.CancelledError)`
+- [x] 将 `except BaseException` 改为 `except (Exception, asyncio.CancelledError)`
 
 ### 2.4 调度任务无重叠防护
 
 - **文件：** `backend/scheduler.py`
 - **问题：** `run_period_collect()` 等任务未检查是否有同类型任务正在运行，可能重复启动
-- [ ] 启动任务前调用 `get_running_task_by_task_id()` 检查，避免重叠执行
+- [x] 启动任务前调用 `get_running_task_by_task_id()` 检查，避免重叠执行
 
 ---
 
@@ -76,19 +76,19 @@
 
 - **文件：** `frontend/src/pages/TokenPage.tsx:146`
 - **问题：** 使用 `idx` 作为 React key，列表更新时可能出现渲染异常
-- [ ] 改用稳定唯一标识（如 `item.token` 的哈希值）
+- [x] 改用稳定唯一标识（如 `item.token` 的哈希值）
 
 ### 3.2 `useMenglaQuery.ts` 使用 `any` 类型
 
 - **文件：** `frontend/src/hooks/useMenglaQuery.ts:114`
 - **问题：** `Record<string, any>` 类型不安全
-- [ ] 替换为具体类型或 `unknown` 配合类型守卫
+- [x] 替换为具体类型或 `unknown` 配合类型守卫
 
 ### 3.3 SyncTaskLogViewer 组件过大
 
 - **文件：** `frontend/src/components/AdminCenter/SyncTaskLogViewer.tsx`（450+ 行）
 - **问题：** 单文件包含 `StatusBadge`、`ProgressBar`、`TriggerBadge`、`ConfirmDialog` 等多个子组件
-- [ ] 拆分为独立子组件文件，提高可维护性
+- [x] 拆分为独立子组件文件，提高可维护性
 
 ---
 
@@ -98,13 +98,13 @@
 
 - **文件：** `backend/api/auth_routes.py`
 - **问题：** `/login` 端点不记录登录尝试（成功/失败），缺乏安全审计
-- [ ] 记录登录尝试日志，包含用户名和 IP 地址
+- [x] 记录登录尝试日志，包含用户名和 IP 地址
 
 ### 4.2 sync_task_log 静默失败
 
 - **文件：** `backend/core/sync_task_log.py`
 - **问题：** `create_sync_task_log` 等函数在 `ObjectId` 无效或数据库不可用时静默返回 `None`，无 warning 日志
-- [ ] 添加 `logger.warning()` 以便排查问题
+- [x] 添加 `logger.warning()` 以便排查问题
 
 ### 4.3 兼容路由未清理
 

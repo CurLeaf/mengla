@@ -540,34 +540,58 @@ async def _fetch_mengla_data(
             
             if is_trend:
                 points = _get_trend_points_from_result(result)
-                for point in points:
-                    if not isinstance(point, dict):
-                        continue
-                    pt_timest = point.get("timest") or ""
-                    pk = timest_to_period_key(granularity, pt_timest)
-                    doc = {
-                        "action": action,
-                        "cat_id": cat_id,
-                        "granularity": granularity,
-                        "period_key": pk,
-                        "data": {"industryTrendRange": {"data": [point]}},
-                        "source": "fresh",
-                        "created_at": now,
-                        "updated_at": now,
-                        "expired_at": expired_at,
-                    }
-                    filter_doc = {
-                        "action": action,
-                        "cat_id": cat_id,
-                        "granularity": granularity,
-                        "period_key": pk,
-                    }
-                    await collection.replace_one(filter_doc, doc, upsert=True)
-                    if database.redis_client is not None:
-                        rk = build_redis_data_key(action, cat_id, granularity, pk)
-                        await database.redis_client.set(
-                            rk, json.dumps(doc["data"], ensure_ascii=False), ex=ttl
+                # 多文档写入：尝试使用事务保证一致性（需 Replica Set）
+                _session = None
+                try:
+                    if database.mongo_client is not None:
+                        _session = await database.mongo_client.start_session()
+                        _session.start_transaction()
+                except Exception:
+                    # 单节点 MongoDB 不支持事务，降级为逐条写入
+                    _session = None
+
+                try:
+                    for point in points:
+                        if not isinstance(point, dict):
+                            continue
+                        pt_timest = point.get("timest") or ""
+                        pk = timest_to_period_key(granularity, pt_timest)
+                        doc = {
+                            "action": action,
+                            "cat_id": cat_id,
+                            "granularity": granularity,
+                            "period_key": pk,
+                            "data": {"industryTrendRange": {"data": [point]}},
+                            "source": "fresh",
+                            "created_at": now,
+                            "updated_at": now,
+                            "expired_at": expired_at,
+                        }
+                        filter_doc = {
+                            "action": action,
+                            "cat_id": cat_id,
+                            "granularity": granularity,
+                            "period_key": pk,
+                        }
+                        await collection.replace_one(
+                            filter_doc, doc, upsert=True,
+                            session=_session,
                         )
+                        if database.redis_client is not None:
+                            rk = build_redis_data_key(action, cat_id, granularity, pk)
+                            await database.redis_client.set(
+                                rk, json.dumps(doc["data"], ensure_ascii=False), ex=ttl
+                            )
+                    if _session is not None:
+                        await _session.commit_transaction()
+                except Exception:
+                    if _session is not None:
+                        await _session.abort_transaction()
+                    raise
+                finally:
+                    if _session is not None:
+                        await _session.end_session()
+
                 logger.info(
                     "MengLa stored (trend): action=%s cat_id=%s granularity=%s points=%s",
                     action, cat_id, granularity, len(points),

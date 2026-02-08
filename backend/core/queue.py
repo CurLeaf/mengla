@@ -122,31 +122,41 @@ async def get_pending_subtasks(job_id: Any, limit: int = 1) -> List[Dict[str, An
     return await cursor.to_list(length=limit)
 
 
-async def claim_next_subtask(job_id: Any) -> Optional[Dict[str, Any]]:
+async def claim_next_subtask(job_id: Any, worker_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     原子 claim：使用 find_one_and_update 将一个 PENDING subtask
     原子地标记为 RUNNING 并返回，避免并发消费者重复领取。
+    可选 worker_id 用于标记领取者，便于排查并发问题。
     """
     if mongo_db is None:
         return None
     now = datetime.utcnow()
+    update: Dict[str, Any] = {
+        "$set": {"status": SUB_RUNNING, "started_at": now, "updated_at": now},
+        "$inc": {"attempts": 1},
+    }
+    if worker_id:
+        update["$set"]["claimed_by"] = worker_id
     doc = await mongo_db[CRAWL_SUBTASKS].find_one_and_update(
         {"job_id": job_id, "status": SUB_PENDING},
-        {
-            "$set": {"status": SUB_RUNNING, "started_at": now, "updated_at": now},
-            "$inc": {"attempts": 1},
-        },
+        update,
         sort=[("created_at", 1)],
         return_document=ReturnDocument.AFTER,
     )
     return doc
 
 
-async def claim_subtasks(job_id: Any, limit: int = 1) -> List[Dict[str, Any]]:
-    """原子 claim 多个 subtask（逐条 find_one_and_update）。"""
+async def claim_subtasks(
+    job_id: Any, limit: int = 1, worker_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    批量原子 claim 多个 subtask。
+    每次调用 find_one_and_update 原子地领取一条，循环至 limit 或无可领取。
+    通过 worker_id 标记领取者，防止高并发下的混淆。
+    """
     claimed = []
     for _ in range(limit):
-        doc = await claim_next_subtask(job_id)
+        doc = await claim_next_subtask(job_id, worker_id=worker_id)
         if doc is None:
             break
         claimed.append(doc)

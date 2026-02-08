@@ -6,6 +6,10 @@ import {
   deleteSyncTask,
   type SyncTaskLog,
 } from "../../services/sync-task-api";
+import { StatusBadge } from "./sync-task-log/StatusBadge";
+import { ProgressBar } from "./sync-task-log/ProgressBar";
+import { TriggerBadge } from "./sync-task-log/TriggerBadge";
+import { ConfirmDialog } from "./sync-task-log/ConfirmDialog";
 
 /**
  * 将后端返回的 UTC 时间字符串解析为 Date 对象。
@@ -54,153 +58,6 @@ function calcDuration(startedAt: string, finishedAt: string | null): string {
     return `${minutes}m ${seconds % 60}s`;
   }
   return `${seconds}s`;
-}
-
-/**
- * 状态标签组件
- */
-function StatusBadge({ status }: { status: SyncTaskLog["status"] }) {
-  const configMap: Record<
-    SyncTaskLog["status"],
-    { bg: string; text: string; label: string }
-  > = {
-    RUNNING: {
-      bg: "bg-blue-500/20",
-      text: "text-blue-400",
-      label: "运行中",
-    },
-    COMPLETED: {
-      bg: "bg-green-500/20",
-      text: "text-green-400",
-      label: "已完成",
-    },
-    FAILED: {
-      bg: "bg-red-500/20",
-      text: "text-red-400",
-      label: "失败",
-    },
-    CANCELLED: {
-      bg: "bg-yellow-500/20",
-      text: "text-yellow-400",
-      label: "已取消",
-    },
-  };
-  const fallback = { bg: "bg-gray-500/20", text: "text-gray-400", label: status };
-  const config = configMap[status] ?? fallback;
-
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${config.bg} ${config.text}`}
-    >
-      {status === "RUNNING" && (
-        <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
-      )}
-      {config.label}
-    </span>
-  );
-}
-
-/**
- * 进度条组件
- */
-function ProgressBar({ progress }: { progress: SyncTaskLog["progress"] }) {
-  const { total, completed, failed } = progress;
-  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-  const failedPercent = total > 0 ? Math.round((failed / total) * 100) : 0;
-
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-        <div className="h-full flex">
-          <div
-            className="bg-green-500 transition-all duration-300"
-            style={{ width: `${percent}%` }}
-          />
-          {failedPercent > 0 && (
-            <div
-              className="bg-red-500 transition-all duration-300"
-              style={{ width: `${failedPercent}%` }}
-            />
-          )}
-        </div>
-      </div>
-      <span className="text-xs text-white/60 whitespace-nowrap min-w-[80px]">
-        {completed}/{total} ({percent}%)
-      </span>
-    </div>
-  );
-}
-
-/**
- * 触发方式标签
- */
-function TriggerBadge({ trigger }: { trigger: SyncTaskLog["trigger"] }) {
-  const isManual = trigger === "manual";
-  return (
-    <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs ${
-        isManual
-          ? "bg-purple-500/20 text-purple-400"
-          : "bg-gray-500/20 text-gray-400"
-      }`}
-    >
-      {isManual ? "手动" : "定时"}
-    </span>
-  );
-}
-
-/**
- * 确认弹窗
- */
-function ConfirmDialog({
-  open,
-  title,
-  message,
-  confirmLabel,
-  confirmClassName,
-  extra,
-  loading,
-  onConfirm,
-  onCancel,
-}: {
-  open: boolean;
-  title: string;
-  message: string;
-  confirmLabel: string;
-  confirmClassName?: string;
-  extra?: React.ReactNode;
-  loading?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-sm rounded-lg border border-white/10 bg-gray-900 p-5 shadow-xl">
-        <h3 className="text-sm font-semibold text-white">{title}</h3>
-        <p className="mt-2 text-xs text-white/60 leading-relaxed">{message}</p>
-        {extra && <div className="mt-3">{extra}</div>}
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            disabled={loading}
-            className="rounded px-3 py-1.5 text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
-          >
-            取消
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className={`rounded px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-              confirmClassName || "bg-red-600 text-white hover:bg-red-500"
-            }`}
-          >
-            {loading ? "处理中…" : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 type DialogState =

@@ -53,9 +53,8 @@ async def require_admin(
 ) -> dict:
     """
     管理员认证 = JWT 验证 + 面板开关检查。
-    同时解决两个问题：
-    1. 当前 require_panel_admin 不验证 JWT
-    2. 生产环境需要显式启用面板
+    1. 验证面板管理开关是否启用
+    2. 验证 JWT token 有效性
     """
     # 1. 检查面板开关
     if not _panel_admin_enabled():

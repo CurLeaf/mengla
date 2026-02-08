@@ -113,7 +113,13 @@ async def fill_mengla_missing(
 # ---------------------------------------------------------------------------
 @router.get("/config")
 async def panel_get_config():
-    """Get current industry panel config (modules + layout). Public."""
+    """
+    Get current industry panel config (modules + layout).
+
+    Public endpoint — 无需认证。
+    设计意图：前端初始化时需要在用户登录前加载面板模块配置以渲染 UI，
+    该接口仅返回面板布局和模块列表，不含任何敏感数据。
+    """
     return get_panel_config()
 
 
@@ -136,8 +142,7 @@ async def panel_list_tasks():
 @router.post("/tasks/{task_id}/run", dependencies=[Depends(require_admin)])
 async def panel_run_task(task_id: str):
     """Trigger a panel task by id. Runs in background."""
-    # 导入在此处避免循环依赖 — _track_task 留在 main.py
-    from ..main import _track_task
+    from ..utils.tasks import _track_task
     if task_id not in PANEL_TASKS:
         raise HTTPException(status_code=404, detail=f"unknown task_id: {task_id}")
     run_fn = PANEL_TASKS[task_id]["run"]

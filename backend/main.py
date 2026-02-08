@@ -58,7 +58,6 @@ from .api import (
     admin_routes,
     sync_task_routes,
 )
-from .api.compat import compat_router
 from .middleware.error_handler import register_error_handlers
 from .infra.database import init_db_events
 from .infra.alerting import init_default_notifiers
@@ -100,9 +99,6 @@ api_router.include_router(admin_routes.router,      prefix="/admin",       tags=
 api_router.include_router(sync_task_routes.router,  prefix="/sync-tasks",  tags=["同步任务"])
 app.include_router(api_router)
 
-# 旧路径兼容重定向（/panel/*, /admin/* → /api/panel/*, /api/admin/*）
-app.include_router(compat_router)
-
 # ---------------------------------------------------------------------------
 # 注册全局异常处理
 # ---------------------------------------------------------------------------
@@ -119,18 +115,9 @@ init_db_events(app)
 scheduler = init_scheduler()
 
 # ---------------------------------------------------------------------------
-# 后台任务跟踪（加锁保护）
+# 后台任务跟踪（从 utils.tasks 导入，避免循环依赖）
 # ---------------------------------------------------------------------------
-_bg_lock = asyncio.Lock()
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _track_task(coro) -> asyncio.Task:
-    """创建后台任务并跟踪，任务完成后自动移除引用。"""
-    task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-    return task
+from .utils.tasks import _track_task, _background_tasks, _bg_lock  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

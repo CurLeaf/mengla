@@ -4,9 +4,32 @@
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Dict, Any
 from datetime import timedelta
+
+_config_logger = logging.getLogger("mengla-config")
+
+
+def _safe_int(key: str, default: int) -> int:
+    """安全地将环境变量解析为 int，解析失败时返回默认值并记录警告。"""
+    raw = os.getenv(key, str(default))
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        _config_logger.warning("Invalid int for env %s=%r, using default %d", key, raw, default)
+        return default
+
+
+def _safe_float(key: str, default: float) -> float:
+    """安全地将环境变量解析为 float，解析失败时返回默认值并记录警告。"""
+    raw = os.getenv(key, str(default))
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        _config_logger.warning("Invalid float for env %s=%r, using default %s", key, raw, default)
+        return default
 
 
 # ==============================================================================
@@ -18,33 +41,52 @@ SCHEDULER_CONFIG = {
         "start": os.getenv("COLLECT_WINDOW_START", "00:30"),
         "end": os.getenv("COLLECT_WINDOW_END", "05:00"),
     },
-    "concurrency": int(os.getenv("COLLECT_CONCURRENCY", "5")),
-    "retry_times": int(os.getenv("COLLECT_RETRY_TIMES", "3")),
+    "concurrency": _safe_int("COLLECT_CONCURRENCY", 5),
+    "retry_times": _safe_int("COLLECT_RETRY_TIMES", 3),
 }
 
-# 定时任务配置
+# 定时任务配置（支持通过环境变量 CRON_<JOB_ID> 覆盖 cron 表达式）
+# 格式：标准 5 段 cron "minute hour day month day_of_week"
 CRON_JOBS = {
     "daily_collect": {
-        "cron": "30 0 * * *",  # 每日 00:30
+        "cron": os.getenv("CRON_DAILY_COLLECT", "0 4 * * *"),  # 默认每日 04:00
         "description": "每日主采集（day 颗粒度）",
     },
     "monthly_collect": {
-        "cron": "0 1 1 * *",  # 每月1日 01:00
+        "cron": os.getenv("CRON_MONTHLY_COLLECT", "0 5 3 * *"),  # 默认每月3日 05:00
         "description": "月度采集（month 颗粒度）",
     },
     "quarterly_collect": {
-        "cron": "0 2 1 1,4,7,10 *",  # 季初 02:00
+        "cron": os.getenv("CRON_QUARTERLY_COLLECT", "0 6 10 1,4,7,10 *"),  # 默认季后10日 06:00
         "description": "季度采集（quarter 颗粒度）",
     },
     "yearly_collect": {
-        "cron": "0 3 1 1 *",  # 年初 03:00
+        "cron": os.getenv("CRON_YEARLY_COLLECT", "0 7 20 1 *"),  # 默认1月20日 07:00
         "description": "年度采集（year 颗粒度）",
     },
     "backfill_check": {
-        "cron": "0 */4 * * *",  # 每4小时
+        "cron": os.getenv("CRON_BACKFILL_CHECK", "0 */4 * * *"),  # 默认每4小时
         "description": "补数检查",
     },
 }
+
+
+def parse_cron_expr(cron_str: str) -> Dict[str, str]:
+    """
+    解析标准 5 段 cron 表达式为 APScheduler 的 cron trigger 参数。
+    格式: "minute hour day month day_of_week"
+    返回: {"minute": ..., "hour": ..., "day": ..., "month": ..., "day_of_week": ...}
+    """
+    parts = cron_str.strip().split()
+    if len(parts) != 5:
+        raise ValueError(f"Invalid cron expression (expected 5 fields): {cron_str}")
+    return {
+        "minute": parts[0],
+        "hour": parts[1],
+        "day": parts[2],
+        "month": parts[3],
+        "day_of_week": parts[4],
+    }
 
 
 # ==============================================================================
@@ -62,8 +104,8 @@ REDIS_TTL = CACHE_TTL.copy()
 
 # L1 本地缓存配置
 L1_CACHE_CONFIG = {
-    "max_size": int(os.getenv("L1_CACHE_MAX_SIZE", "1000")),
-    "ttl": int(os.getenv("L1_CACHE_TTL", "300")),  # 5分钟
+    "max_size": _safe_int("L1_CACHE_MAX_SIZE", 1000),
+    "ttl": _safe_int("L1_CACHE_TTL", 300),  # 5分钟
 }
 
 
@@ -82,9 +124,9 @@ DATA_RETENTION: Dict[str, int] = {
 # 重试机制配置
 # ==============================================================================
 RETRY_CONFIG = {
-    "max_attempts": int(os.getenv("RETRY_MAX_ATTEMPTS", "3")),
-    "base_delay": float(os.getenv("RETRY_BASE_DELAY", "1.0")),  # 秒
-    "max_delay": float(os.getenv("RETRY_MAX_DELAY", "60.0")),   # 秒
+    "max_attempts": _safe_int("RETRY_MAX_ATTEMPTS", 3),
+    "base_delay": _safe_float("RETRY_BASE_DELAY", 1.0),  # 秒
+    "max_delay": _safe_float("RETRY_MAX_DELAY", 60.0),   # 秒
     "exponential_base": 2,
     "jitter": True,  # 添加随机抖动
     "retryable_exceptions": (
@@ -100,10 +142,10 @@ RETRY_CONFIG = {
 # 熔断器配置
 # ==============================================================================
 CIRCUIT_BREAKER_CONFIG = {
-    "failure_threshold": int(os.getenv("CB_FAILURE_THRESHOLD", "5")),   # 触发熔断的连续失败次数
-    "success_threshold": int(os.getenv("CB_SUCCESS_THRESHOLD", "3")),   # 恢复所需的连续成功次数
-    "timeout": int(os.getenv("CB_TIMEOUT", "60")),                      # 熔断超时（秒）
-    "half_open_max_calls": int(os.getenv("CB_HALF_OPEN_CALLS", "3")),   # 半开状态最大探测次数
+    "failure_threshold": _safe_int("CB_FAILURE_THRESHOLD", 5),   # 触发熔断的连续失败次数
+    "success_threshold": _safe_int("CB_SUCCESS_THRESHOLD", 3),   # 恢复所需的连续成功次数
+    "timeout": _safe_int("CB_TIMEOUT", 60),                      # 熔断超时（秒）
+    "half_open_max_calls": _safe_int("CB_HALF_OPEN_CALLS", 3),   # 半开状态最大探测次数
 }
 
 
@@ -111,9 +153,9 @@ CIRCUIT_BREAKER_CONFIG = {
 # 并发采集配置
 # ==============================================================================
 CONCURRENT_CONFIG = {
-    "max_concurrent": int(os.getenv("MAX_CONCURRENT_TASKS", "5")),
-    "task_timeout": int(os.getenv("TASK_TIMEOUT", "300")),  # 5分钟
-    "batch_size": int(os.getenv("BATCH_SIZE", "10")),
+    "max_concurrent": _safe_int("MAX_CONCURRENT_TASKS", 5),
+    "task_timeout": _safe_int("TASK_TIMEOUT", 300),  # 5分钟
+    "batch_size": _safe_int("BATCH_SIZE", 10),
 }
 
 
@@ -229,7 +271,7 @@ def build_redis_lock_key(action: str, cat_id: str, granularity: str, period_key:
 # ==============================================================================
 def get_collect_interval() -> float:
     """采集请求间隔（秒），可通过环境变量 COLLECT_INTERVAL_SECONDS 调整"""
-    return float(os.getenv("COLLECT_INTERVAL_SECONDS", "2.0"))
+    return _safe_float("COLLECT_INTERVAL_SECONDS", 2.0)
 
 
 # ==============================================================================
