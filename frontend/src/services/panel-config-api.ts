@@ -1,7 +1,6 @@
 import type { PanelConfig } from "../types/panel-config";
+import { API_BASE } from "../constants";
 import { authFetch } from "./auth";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 export async function fetchPanelConfig(): Promise<PanelConfig> {
   const resp = await authFetch(`${API_BASE}/api/panel/config`);

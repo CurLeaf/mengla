@@ -141,9 +141,9 @@ export default function TokenPage() {
             已生成的 Token（仅显示一次，请妥善保存）
           </h3>
           <div className="space-y-3">
-            {tokens.map((item, idx) => (
+            {tokens.map((item) => (
               <div
-                key={idx}
+                key={item.token}
                 className="bg-[#0F0F12] border border-white/10 rounded-xl p-4"
               >
                 <div className="flex items-center justify-between mb-2">

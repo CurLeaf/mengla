@@ -111,7 +111,7 @@ export function useRankList(
 ): HighListRow[] {
   return useMemo(() => {
     if (!rawData) return [];
-    const hl = (rawData as Record<string, any>)?.[listKey];
+    const hl = (rawData as Record<string, unknown>)?.[listKey] as Record<string, unknown> | undefined;
     const data = hl?.data;
     const list =
       (Array.isArray(data) ? data : null) ??

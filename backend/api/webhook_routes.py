@@ -3,9 +3,10 @@ import json
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..infra import database
+from .deps import require_webhook_signature
 
 router = APIRouter(tags=["Webhook"])
 
@@ -21,7 +22,7 @@ async def mengla_webhook_health():
     return {"status": "ok", "message": "webhook endpoint is ready"}
 
 
-@router.post("/mengla-notify")
+@router.post("/mengla-notify", dependencies=[Depends(require_webhook_signature)])
 async def mengla_webhook(request: Request):
     """
     萌拉托管任务的 webhook 回调入口（POST）：

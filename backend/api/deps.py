@@ -1,11 +1,16 @@
 """路由共享依赖项"""
+import hashlib
+import hmac
+import logging
 import os
 from typing import Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ..core.auth import verify_token
+
+logger = logging.getLogger("mengla-backend")
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -19,14 +24,28 @@ def _panel_admin_enabled() -> bool:
     return env != "production"
 
 
-async def require_panel_admin() -> None:
-    """Dependency: raise 403 if panel admin APIs are disabled (non-dev).
-    已废弃，请使用 require_admin。"""
-    if not _panel_admin_enabled():
-        raise HTTPException(
-            status_code=403,
-            detail="Panel admin is disabled. Set ENABLE_PANEL_ADMIN=1 to enable.",
-        )
+async def require_webhook_signature(request: Request) -> None:
+    """
+    Webhook 签名校验依赖（HMAC-SHA256）。
+    请求方需在 Header 中携带 X-Signature-256，值为 sha256=<hex_digest>。
+    密钥从环境变量 WEBHOOK_SECRET 读取；若未配置则跳过校验（开发模式）。
+    """
+    secret = os.getenv("WEBHOOK_SECRET", "").strip()
+    if not secret:
+        logger.warning("WEBHOOK_SECRET not set, skipping webhook signature verification")
+        return
+
+    signature_header = request.headers.get("X-Signature-256", "")
+    if not signature_header:
+        raise HTTPException(status_code=403, detail="Missing X-Signature-256 header")
+
+    body = await request.body()
+    expected = "sha256=" + hmac.new(
+        secret.encode(), body, hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, signature_header):
+        raise HTTPException(status_code=403, detail="Invalid webhook signature")
 
 
 async def require_admin(

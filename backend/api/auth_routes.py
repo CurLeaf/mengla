@@ -1,15 +1,19 @@
 """认证相关路由：登录、生成 Token、验证身份"""
+import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ..core.auth import (
     authenticate_user,
+    check_login_rate,
     create_api_token,
     create_token,
     require_auth,
 )
+
+logger = logging.getLogger("mengla-backend")
 
 router = APIRouter(tags=["Auth"])
 
@@ -31,11 +35,21 @@ class GenerateTokenRequest(BaseModel):
 # 路由
 # ---------------------------------------------------------------------------
 @router.post("/login")
-async def login(body: LoginRequest):
+async def login(body: LoginRequest, request: Request):
     """登录接口：验证用户名密码，返回 JWT token"""
+    client_ip = request.client.host if request.client else "unknown"
+
+    # 频率限制
+    if not await check_login_rate(client_ip):
+        logger.warning("LOGIN_RATE_LIMITED user=%s ip=%s", body.username, client_ip)
+        raise HTTPException(status_code=429, detail="登录尝试过于频繁，请稍后再试")
+
     if not authenticate_user(body.username, body.password):
+        logger.warning("LOGIN_FAILED user=%s ip=%s", body.username, client_ip)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+
     token = create_token(subject=body.username)
+    logger.info("LOGIN_SUCCESS user=%s ip=%s", body.username, client_ip)
     return {"token": token, "username": body.username}
 
 

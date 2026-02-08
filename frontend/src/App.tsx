@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { authFetch, logout, setUnauthorizedHandler } from "./services/auth";
+import { logout, setUnauthorizedHandler } from "./services/auth";
+import { runPanelTask } from "./services/mengla-admin-api";
 import { useCategoryState } from "./hooks/useCategoryState";
-import { API_BASE } from "./constants";
 import { ADMIN_SECTIONS } from "./components/AdminCenter/AdminCenterLayout";
 import type { Category, CategoryChild } from "./types/category";
 
@@ -85,13 +85,11 @@ export default function App() {
     setTriggerLoading(true);
     try {
       if (collectMode === "force") {
-        const resp = await authFetch(`${API_BASE}/api/panel/tasks/mengla_granular_force/run`, { method: "POST" });
-        if (!resp.ok) throw new Error(`强制采集启动失败: ${resp.status}`);
+        await runPanelTask("mengla_granular_force");
         queryClient.invalidateQueries({ queryKey: ["mengla"] });
         toast.success("强制采集任务已启动", { description: "将跳过所有缓存直接从数据源采集，请在终端查看进度" });
       } else if (collectMode === "fill") {
-        const resp = await authFetch(`${API_BASE}/api/panel/tasks/mengla_granular/run`, { method: "POST" });
-        if (!resp.ok) throw new Error(`补齐采集启动失败: ${resp.status}`);
+        await runPanelTask("mengla_granular");
         queryClient.invalidateQueries({ queryKey: ["mengla"] });
         toast.success("补齐采集任务已启动", { description: "将只采集缺失的数据，已有缓存的会跳过" });
       } else {

@@ -33,6 +33,7 @@ from .core.sync_task_log import (
     create_sync_task_log,
     update_sync_task_progress,
     finish_sync_task_log,
+    get_running_task_by_task_id,
     is_cancelled,
     _unmark_cancelled,
     STATUS_COMPLETED,
@@ -176,6 +177,12 @@ async def run_period_collect(
     task_id = f"{granularity}_collect"
     task_name = _GRANULARITY_TASK_NAMES.get(granularity, f"{granularity} 采集")
 
+    # 重叠防护：检查是否有同类型任务正在运行
+    existing = await get_running_task_by_task_id(task_id)
+    if existing:
+        logger.warning("Task %s already running (log_id=%s), skip", task_id, existing["id"])
+        return {"skipped": True, "reason": "already_running", "existing_log_id": existing["id"]}
+
     log_id = await create_sync_task_log(
         task_id=task_id,
         task_name=task_name,
@@ -252,9 +259,9 @@ async def run_period_collect(
         logger.info("%s collect completed: %s", granularity.capitalize(), stats)
         return stats
 
-    except BaseException as e:
+    except (Exception, asyncio.CancelledError) as e:
         _unmark_cancelled(log_id)
-        error_msg = "任务被中断（服务重启）" if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt)) else str(e)
+        error_msg = "任务被中断（服务重启）" if isinstance(e, asyncio.CancelledError) else str(e)
         await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=error_msg)
         logger.error("%s collect failed: %s", granularity.capitalize(), e)
         raise
@@ -355,6 +362,12 @@ async def run_backfill_check(
     # 检查总数: 2 granularities * cats * 4 actions
     total_checks = 2 * len(top_cat_ids) * len(NON_TREND_ACTIONS)
 
+    # 重叠防护
+    existing = await get_running_task_by_task_id("backfill_check")
+    if existing:
+        logger.warning("Task backfill_check already running (log_id=%s), skip", existing["id"])
+        return {"skipped": True, "reason": "already_running", "existing_log_id": existing["id"]}
+
     log_id = await create_sync_task_log(
         task_id="backfill_check",
         task_name="补数检查",
@@ -423,9 +436,9 @@ async def run_backfill_check(
         logger.info("Backfill check completed: %s", stats)
         return stats
 
-    except BaseException as e:
+    except (Exception, asyncio.CancelledError) as e:
         _unmark_cancelled(log_id)
-        error_msg = "任务被中断（服务重启）" if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt)) else str(e)
+        error_msg = "任务被中断（服务重启）" if isinstance(e, asyncio.CancelledError) else str(e)
         await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=error_msg)
         logger.error("Backfill check failed: %s", e)
         raise
@@ -498,9 +511,9 @@ async def run_mengla_jobs(
         await finish_sync_task_log(log_id, status=final_status)
         logger.info("MengLa single day completed: completed=%d failed=%d", completed, failed)
 
-    except BaseException as e:
+    except (Exception, asyncio.CancelledError) as e:
         _unmark_cancelled(log_id)
-        error_msg = "任务被中断（服务重启）" if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt)) else str(e)
+        error_msg = "任务被中断（服务重启）" if isinstance(e, asyncio.CancelledError) else str(e)
         await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=error_msg)
         logger.error("MengLa single day failed: %s", e)
         raise
@@ -526,6 +539,12 @@ async def run_mengla_granular_jobs(
 
     task_id = "mengla_granular_force" if force_refresh else "mengla_granular"
     task_name = "MengLa 强制全量采集" if force_refresh else "MengLa 日/月/季/年补齐"
+
+    # 重叠防护
+    existing = await get_running_task_by_task_id(task_id)
+    if existing:
+        logger.warning("Task %s already running (log_id=%s), skip", task_id, existing["id"])
+        return
 
     log_id = await create_sync_task_log(
         task_id=task_id,
@@ -672,9 +691,9 @@ async def run_mengla_granular_jobs(
             now.date(), force_refresh, completed_count, failed_count
         )
 
-    except BaseException as e:
+    except (Exception, asyncio.CancelledError) as e:
         _unmark_cancelled(log_id)
-        error_msg = "任务被中断（服务重启）" if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt)) else str(e)
+        error_msg = "任务被中断（服务重启）" if isinstance(e, asyncio.CancelledError) else str(e)
         await finish_sync_task_log(log_id, status=STATUS_FAILED, error_message=error_msg)
         logger.error("Granular jobs failed with unexpected error: %s", e)
         raise

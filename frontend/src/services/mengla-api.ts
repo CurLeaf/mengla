@@ -1,7 +1,6 @@
 import type { MenglaQueryParams, MenglaQueryResponse } from "../types/mengla";
+import { API_BASE } from "../constants";
 import { authFetch } from "./auth";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 /** 萌拉接口依赖采集服务 webhook，首包可能较慢，超时设为 3 分钟 */
 const MENGLA_FETCH_TIMEOUT_MS = 3 * 60 * 1000;

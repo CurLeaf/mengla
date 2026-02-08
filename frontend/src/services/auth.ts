@@ -5,7 +5,8 @@
  * - 401 时自动清除 token 并跳转登录页
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { API_BASE } from "../constants";
+
 const TOKEN_KEY = "mengla_token";
 
 /* ---------- Token 存储 ---------- */
