@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { isAuthenticated } from "../services/auth";
 
 /**
@@ -18,10 +19,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (checking) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#050506]">
+      <div className="flex items-center justify-center h-screen bg-background">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-6 w-6 rounded-full border-2 border-white/20 border-t-[#5E6AD2] animate-spin" />
-          <span className="text-xs text-white/40">验证身份中…</span>
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <span className="text-xs text-muted-foreground">验证身份中…</span>
         </div>
       </div>
     );

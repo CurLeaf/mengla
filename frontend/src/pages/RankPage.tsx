@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { HotIndustryTable } from "../components/HotIndustryTable";
 import {
   getDefaultTimestForPeriod,
@@ -62,12 +63,12 @@ const RankPage: React.FC<RankPageProps> = ({ mode, listKey, title }) => {
     return (
       <div className="space-y-6">
         {periodSelector}
-        <div className="flex flex-col items-center justify-center py-24 text-white/40 space-y-3">
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground space-y-3">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-muted-foreground/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
           </svg>
           <p className="text-sm">
-            请点击左上角 <span className="text-[#5E6AD2] font-medium">「采集」</span> 按钮加载数据
+            请点击左上角 <span className="text-primary font-medium">「采集」</span> 按钮加载数据
           </p>
         </div>
       </div>
@@ -79,8 +80,8 @@ const RankPage: React.FC<RankPageProps> = ({ mode, listKey, title }) => {
       <div className="flex items-center gap-3">
         {periodSelector}
         {query.isFetching && !query.isLoading && (
-          <div className="flex items-center gap-1.5 text-xs text-white/40">
-            <span className="inline-block w-3 h-3 border border-white/20 border-t-[#5E6AD2] rounded-full animate-spin" />
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin text-primary" />
             <span>更新中…</span>
           </div>
         )}

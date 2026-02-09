@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { TrendChart } from "../components/TrendChart";
 import { DistributionSection } from "../components/DistributionCards";
 import {
@@ -83,9 +84,9 @@ export default function DashboardPage() {
   /* ---- 渲染：两个 section 各自独立，互不阻塞 ---- */
   if (fetchTrigger === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 text-white/40 space-y-3">
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
-        <p className="text-sm">请点击左上角 <span className="text-[#5E6AD2] font-medium">「采集」</span> 按钮加载数据</p>
+      <div className="flex flex-col items-center justify-center py-32 text-muted-foreground space-y-3">
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-muted-foreground/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
+        <p className="text-sm">请点击左上角 <span className="text-primary font-medium">「采集」</span> 按钮加载数据</p>
       </div>
     );
   }
@@ -97,11 +98,11 @@ export default function DashboardPage() {
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div>
-              <p className="text-xs font-mono tracking-[0.2em] text-white/50 uppercase">TREND</p>
-              <h2 className="mt-1 text-sm font-semibold text-white">行业趋势</h2>
+              <p className="text-xs font-mono tracking-[0.2em] text-muted-foreground uppercase">TREND</p>
+              <h2 className="mt-1 text-sm font-semibold text-foreground">行业趋势</h2>
             </div>
             {trendQuery.isFetching && !trendQuery.isLoading && (
-              <span className="inline-block w-3 h-3 border border-white/20 border-t-[#5E6AD2] rounded-full animate-spin" title="更新中" />
+              <Loader2 className="w-3 h-3 animate-spin text-primary" title="更新中" />
             )}
           </div>
           <TrendPeriodRangeSelector

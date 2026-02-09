@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { Loader2 } from "lucide-react";
 import {
   fetchCollectHealth,
   type CollectHealthResponse,
@@ -9,6 +10,9 @@ import {
   type RedisStatus,
   type RequestPressure,
 } from "../../services/mengla-admin-api";
+import { Card, CardContent } from "../ui/card";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 
 /* ---------- 常量 ---------- */
 const ACTION_LABELS: Record<string, string> = {
@@ -19,16 +23,28 @@ const ACTION_LABELS: Record<string, string> = {
   industryTrendRange: "行业趋势",
 };
 
-const LEVEL_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  critical: { bg: "bg-red-500/20", text: "text-red-400", label: "严重" },
-  warning: { bg: "bg-amber-500/20", text: "text-amber-400", label: "警告" },
-  info: { bg: "bg-blue-500/20", text: "text-blue-400", label: "提示" },
+const LEVEL_BADGE_VARIANT: Record<string, "destructive" | "warning" | "info"> = {
+  critical: "destructive",
+  warning: "warning",
+  info: "info",
+};
+
+const LEVEL_LABELS: Record<string, string> = {
+  critical: "严重",
+  warning: "警告",
+  info: "提示",
+};
+
+const LEVEL_TEXT_COLOR: Record<string, string> = {
+  critical: "text-red-400",
+  warning: "text-amber-400",
+  info: "text-blue-400",
 };
 
 /* ---------- 子组件 ---------- */
 
 const COLOR_MAP: Record<string, string> = {
-  white: "text-white",
+  white: "text-foreground",
   "amber-400": "text-amber-400",
   "red-400": "text-red-400",
   "emerald-400": "text-emerald-400",
@@ -45,13 +61,15 @@ function StatCard({
   sub?: string;
   color?: string;
 }) {
-  const colorClass = COLOR_MAP[color] || "text-white";
+  const colorClass = COLOR_MAP[color] || "text-foreground";
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-      <p className="text-[10px] tracking-wider text-white/40 uppercase">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold ${colorClass}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-[10px] text-white/40">{sub}</p>}
-    </div>
+    <Card>
+      <CardContent className="px-4 py-3">
+        <p className="text-[10px] tracking-wider text-muted-foreground uppercase">{label}</p>
+        <p className={`mt-1 text-2xl font-semibold ${colorClass}`}>{value}</p>
+        {sub && <p className="mt-0.5 text-[10px] text-muted-foreground">{sub}</p>}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -61,18 +79,18 @@ function ActionStatRow({ action, stat }: { action: string; stat: ActionStat }) {
     pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-red-500";
 
   return (
-    <div className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
-      <span className="w-24 text-xs text-white/70 shrink-0">
+    <div className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
+      <span className="w-24 text-xs text-muted-foreground shrink-0">
         {ACTION_LABELS[action] || action}
       </span>
-      <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-muted/50 rounded-full overflow-hidden">
         <div
           className={`h-full ${barColor} rounded-full transition-all`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-xs text-white/50 w-12 text-right">{pct}%</span>
-      <span className="text-[10px] text-white/40 w-20 text-right">
+      <span className="text-xs text-muted-foreground w-12 text-right">{pct}%</span>
+      <span className="text-[10px] text-muted-foreground w-20 text-right">
         {stat.has_data}/{stat.total}
       </span>
     </div>
@@ -80,20 +98,19 @@ function ActionStatRow({ action, stat }: { action: string; stat: ActionStat }) {
 }
 
 function EmptyStreakRow({ streak }: { streak: EmptyStreak }) {
-  const style = LEVEL_STYLES[streak.level] || LEVEL_STYLES.info;
+  const variant = LEVEL_BADGE_VARIANT[streak.level] || "info";
+  const textColor = LEVEL_TEXT_COLOR[streak.level] || "text-blue-400";
   return (
-    <div className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
-      <span
-        className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${style.bg} ${style.text}`}
-      >
-        {style.label}
-      </span>
-      <span className="text-xs text-white/60">
+    <div className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0">
+      <Badge variant={variant} className="rounded text-[10px] px-1.5 py-0.5">
+        {LEVEL_LABELS[streak.level] || "提示"}
+      </Badge>
+      <span className="text-xs text-muted-foreground">
         {ACTION_LABELS[streak.action] || streak.action}
       </span>
-      <span className="text-[10px] text-white/40 font-mono">{streak.cat_id}</span>
-      <span className="ml-auto text-xs text-white/50">
-        连续 <strong className={style.text}>{streak.streak}</strong> 次为空
+      <span className="text-[10px] text-muted-foreground font-mono">{streak.cat_id}</span>
+      <span className="ml-auto text-xs text-muted-foreground">
+        连续 <strong className={textColor}>{streak.streak}</strong> 次为空
       </span>
     </div>
   );
@@ -109,26 +126,26 @@ function RecentRecordRow({ record }: { record: RecentRecord }) {
     : "--";
 
   return (
-    <div className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0 text-xs">
-      <span className="text-white/40 w-16 shrink-0 font-mono">{time}</span>
-      <span className="text-white/60 w-20 shrink-0">
+    <div className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0 text-xs">
+      <span className="text-muted-foreground w-16 shrink-0 font-mono">{time}</span>
+      <span className="text-muted-foreground w-20 shrink-0">
         {ACTION_LABELS[record.action] || record.action}
       </span>
-      <span className="text-white/40 font-mono w-20 shrink-0 truncate">
+      <span className="text-muted-foreground font-mono w-20 shrink-0 truncate">
         {record.cat_id || "-"}
       </span>
-      <span className="text-white/40 w-10 shrink-0">{record.granularity}</span>
+      <span className="text-muted-foreground w-10 shrink-0">{record.granularity}</span>
       {record.is_empty ? (
-        <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400">
+        <Badge variant="warning" className="rounded text-[10px] px-1.5 py-0.5">
           空数据
-        </span>
+        </Badge>
       ) : (
-        <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400">
+        <Badge variant="success" className="rounded text-[10px] px-1.5 py-0.5">
           有数据
-        </span>
+        </Badge>
       )}
       {record.empty_reason && (
-        <span className="text-[10px] text-white/30 truncate">{record.empty_reason}</span>
+        <span className="text-[10px] text-muted-foreground truncate">{record.empty_reason}</span>
       )}
     </div>
   );
@@ -157,166 +174,170 @@ function InfraStatus({ mongo, redis }: { mongo: MongoStatus; redis: RedisStatus 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* MongoDB */}
-      <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <StatusDot ok={mongo.ok} />
-          <h3 className="text-xs font-semibold text-white">MongoDB</h3>
-          {mongo.latency_ms != null && (
-            <span
-              className={`ml-auto text-[10px] font-mono ${
-                mongo.latency_ms < 50
-                  ? "text-emerald-400"
-                  : mongo.latency_ms < 200
-                  ? "text-amber-400"
-                  : "text-red-400"
-              }`}
-            >
-              {mongo.latency_ms}ms
-            </span>
-          )}
-        </div>
-
-        {mongo.error ? (
-          <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1.5">
-            {mongo.error === "timeout" ? "连接超时 — MongoDB 可能负载过高" : mongo.error}
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {/* 连接 */}
-            {mongo.connections && (
-              <div>
-                <p className="text-[10px] text-white/40 mb-1">连接</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-white/5 rounded px-2 py-1.5">
-                    <p className="text-[10px] text-white/40">当前</p>
-                    <p className="text-sm font-semibold text-white">{mongo.connections.current}</p>
-                  </div>
-                  <div className="bg-white/5 rounded px-2 py-1.5">
-                    <p className="text-[10px] text-white/40">可用</p>
-                    <p className="text-sm font-semibold text-white">{mongo.connections.available}</p>
-                  </div>
-                  <div className="bg-white/5 rounded px-2 py-1.5">
-                    <p className="text-[10px] text-white/40">累计创建</p>
-                    <p className="text-sm font-semibold text-white/70">{mongo.connections.total_created}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* 操作计数 */}
-            {mongo.opcounters && (
-              <div>
-                <p className="text-[10px] text-white/40 mb-1">操作计数</p>
-                <div className="grid grid-cols-3 gap-1">
-                  {(["insert", "query", "update", "delete", "getmore", "command"] as const).map(
-                    (op) => (
-                      <div key={op} className="flex items-center justify-between px-2 py-1 bg-white/5 rounded text-[10px]">
-                        <span className="text-white/40">{op}</span>
-                        <span className="text-white/70 font-mono">
-                          {(mongo.opcounters![op] ?? 0).toLocaleString()}
-                        </span>
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-            {/* 内存 */}
-            {mongo.memory_mb && (
-              <div className="flex gap-3 text-[10px]">
-                <span className="text-white/40">
-                  内存: <span className="text-white/70">{mongo.memory_mb.resident} MB (res)</span>
-                </span>
-                <span className="text-white/40">
-                  <span className="text-white/70">{mongo.memory_mb.virtual} MB (virt)</span>
-                </span>
-              </div>
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <StatusDot ok={mongo.ok} />
+            <h3 className="text-xs font-semibold text-foreground">MongoDB</h3>
+            {mongo.latency_ms != null && (
+              <span
+                className={`ml-auto text-[10px] font-mono ${
+                  mongo.latency_ms < 50
+                    ? "text-emerald-400"
+                    : mongo.latency_ms < 200
+                    ? "text-amber-400"
+                    : "text-red-400"
+                }`}
+              >
+                {mongo.latency_ms}ms
+              </span>
             )}
           </div>
-        )}
-      </div>
+
+          {mongo.error ? (
+            <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1.5">
+              {mongo.error === "timeout" ? "连接超时 — MongoDB 可能负载过高" : mongo.error}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {/* 连接 */}
+              {mongo.connections && (
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-1">连接</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-muted/50 rounded px-2 py-1.5">
+                      <p className="text-[10px] text-muted-foreground">当前</p>
+                      <p className="text-sm font-semibold text-foreground">{mongo.connections.current}</p>
+                    </div>
+                    <div className="bg-muted/50 rounded px-2 py-1.5">
+                      <p className="text-[10px] text-muted-foreground">可用</p>
+                      <p className="text-sm font-semibold text-foreground">{mongo.connections.available}</p>
+                    </div>
+                    <div className="bg-muted/50 rounded px-2 py-1.5">
+                      <p className="text-[10px] text-muted-foreground">累计创建</p>
+                      <p className="text-sm font-semibold text-muted-foreground">{mongo.connections.total_created}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* 操作计数 */}
+              {mongo.opcounters && (
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-1">操作计数</p>
+                  <div className="grid grid-cols-3 gap-1">
+                    {(["insert", "query", "update", "delete", "getmore", "command"] as const).map(
+                      (op) => (
+                        <div key={op} className="flex items-center justify-between px-2 py-1 bg-muted/50 rounded text-[10px]">
+                          <span className="text-muted-foreground">{op}</span>
+                          <span className="text-muted-foreground font-mono">
+                            {(mongo.opcounters![op] ?? 0).toLocaleString()}
+                          </span>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* 内存 */}
+              {mongo.memory_mb && (
+                <div className="flex gap-3 text-[10px]">
+                  <span className="text-muted-foreground">
+                    内存: <span className="text-foreground/70">{mongo.memory_mb.resident} MB (res)</span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    <span className="text-foreground/70">{mongo.memory_mb.virtual} MB (virt)</span>
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Redis */}
-      <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <StatusDot ok={redis.ok} />
-          <h3 className="text-xs font-semibold text-white">Redis</h3>
-          {redis.version && (
-            <span className="text-[10px] text-white/30 font-mono">v{redis.version}</span>
-          )}
-          {redis.latency_ms != null && (
-            <span
-              className={`ml-auto text-[10px] font-mono ${
-                redis.latency_ms < 10
-                  ? "text-emerald-400"
-                  : redis.latency_ms < 50
-                  ? "text-amber-400"
-                  : "text-red-400"
-              }`}
-            >
-              {redis.latency_ms}ms
-            </span>
-          )}
-        </div>
-
-        {redis.error ? (
-          <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1.5">
-            {redis.error === "timeout" ? "连接超时 — Redis 可能阻塞" : redis.error}
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {/* 关键指标 */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-white/5 rounded px-2 py-1.5">
-                <p className="text-[10px] text-white/40">客户端</p>
-                <p className="text-sm font-semibold text-white">
-                  {redis.connected_clients ?? 0}
-                  {(redis.blocked_clients ?? 0) > 0 && (
-                    <span className="text-red-400 text-[10px] ml-1">
-                      ({redis.blocked_clients} blocked)
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="bg-white/5 rounded px-2 py-1.5">
-                <p className="text-[10px] text-white/40">Key 总数</p>
-                <p className="text-sm font-semibold text-white">{(redis.total_keys ?? 0).toLocaleString()}</p>
-              </div>
-              <div className="bg-white/5 rounded px-2 py-1.5">
-                <p className="text-[10px] text-white/40">OPS/s</p>
-                <p className="text-sm font-semibold text-white">{redis.ops_per_sec ?? 0}</p>
-              </div>
-            </div>
-            {/* 内存 & 命中率 */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-white/5 rounded px-2 py-1.5">
-                <p className="text-[10px] text-white/40">内存使用</p>
-                <p className="text-xs font-semibold text-white">{redis.used_memory_human ?? "?"}</p>
-                <p className="text-[10px] text-white/30">峰值 {redis.used_memory_peak_human ?? "?"}</p>
-              </div>
-              <div className="bg-white/5 rounded px-2 py-1.5">
-                <p className="text-[10px] text-white/40">命中率</p>
-                <p
-                  className={`text-sm font-semibold ${
-                    (redis.hit_rate ?? 0) >= 90
-                      ? "text-emerald-400"
-                      : (redis.hit_rate ?? 0) >= 70
-                      ? "text-amber-400"
-                      : "text-red-400"
-                  }`}
-                >
-                  {redis.hit_rate ?? 0}%
-                </p>
-              </div>
-              <div className="bg-white/5 rounded px-2 py-1.5">
-                <p className="text-[10px] text-white/40">运行时间</p>
-                <p className="text-xs font-semibold text-white">
-                  {redis.uptime_seconds ? formatUptime(redis.uptime_seconds) : "?"}
-                </p>
-              </div>
-            </div>
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <StatusDot ok={redis.ok} />
+            <h3 className="text-xs font-semibold text-foreground">Redis</h3>
+            {redis.version && (
+              <span className="text-[10px] text-muted-foreground font-mono">v{redis.version}</span>
+            )}
+            {redis.latency_ms != null && (
+              <span
+                className={`ml-auto text-[10px] font-mono ${
+                  redis.latency_ms < 10
+                    ? "text-emerald-400"
+                    : redis.latency_ms < 50
+                    ? "text-amber-400"
+                    : "text-red-400"
+                }`}
+              >
+                {redis.latency_ms}ms
+              </span>
+            )}
           </div>
-        )}
-      </div>
+
+          {redis.error ? (
+            <p className="text-[10px] text-red-400 bg-red-500/10 rounded px-2 py-1.5">
+              {redis.error === "timeout" ? "连接超时 — Redis 可能阻塞" : redis.error}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {/* 关键指标 */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-muted/50 rounded px-2 py-1.5">
+                  <p className="text-[10px] text-muted-foreground">客户端</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {redis.connected_clients ?? 0}
+                    {(redis.blocked_clients ?? 0) > 0 && (
+                      <span className="text-red-400 text-[10px] ml-1">
+                        ({redis.blocked_clients} blocked)
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="bg-muted/50 rounded px-2 py-1.5">
+                  <p className="text-[10px] text-muted-foreground">Key 总数</p>
+                  <p className="text-sm font-semibold text-foreground">{(redis.total_keys ?? 0).toLocaleString()}</p>
+                </div>
+                <div className="bg-muted/50 rounded px-2 py-1.5">
+                  <p className="text-[10px] text-muted-foreground">OPS/s</p>
+                  <p className="text-sm font-semibold text-foreground">{redis.ops_per_sec ?? 0}</p>
+                </div>
+              </div>
+              {/* 内存 & 命中率 */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-muted/50 rounded px-2 py-1.5">
+                  <p className="text-[10px] text-muted-foreground">内存使用</p>
+                  <p className="text-xs font-semibold text-foreground">{redis.used_memory_human ?? "?"}</p>
+                  <p className="text-[10px] text-muted-foreground">峰值 {redis.used_memory_peak_human ?? "?"}</p>
+                </div>
+                <div className="bg-muted/50 rounded px-2 py-1.5">
+                  <p className="text-[10px] text-muted-foreground">命中率</p>
+                  <p
+                    className={`text-sm font-semibold ${
+                      (redis.hit_rate ?? 0) >= 90
+                        ? "text-emerald-400"
+                        : (redis.hit_rate ?? 0) >= 70
+                        ? "text-amber-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {redis.hit_rate ?? 0}%
+                  </p>
+                </div>
+                <div className="bg-muted/50 rounded px-2 py-1.5">
+                  <p className="text-[10px] text-muted-foreground">运行时间</p>
+                  <p className="text-xs font-semibold text-foreground">
+                    {redis.uptime_seconds ? formatUptime(redis.uptime_seconds) : "?"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -343,70 +364,72 @@ function RequestPressurePanel({ pressure }: { pressure: RequestPressure }) {
       ? "text-amber-400"
       : pressure.inflight > 0
       ? "text-emerald-400"
-      : "text-white/40";
+      : "text-muted-foreground";
 
   return (
-    <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-              pressure.waiting > 0
-                ? "bg-amber-400 animate-pulse"
-                : pressure.inflight > 0
-                ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
-                : "bg-white/20"
-            }`}
-          />
-          <h3 className="text-xs font-semibold text-white">外部采集请求</h3>
+    <Card>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                pressure.waiting > 0
+                  ? "bg-amber-400 animate-pulse"
+                  : pressure.inflight > 0
+                  ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                  : "bg-muted-foreground/30"
+              }`}
+            />
+            <h3 className="text-xs font-semibold text-foreground">外部采集请求</h3>
+          </div>
+          <span className={`text-[10px] font-medium ${statusColor}`}>{statusText}</span>
         </div>
-        <span className={`text-[10px] font-medium ${statusColor}`}>{statusText}</span>
-      </div>
 
-      {/* 占用率条 */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] text-white/40">
-            并发占用 {pressure.inflight}/{pressure.max_inflight}
-          </span>
-          {pressure.waiting > 0 && (
-            <span className="text-[10px] text-amber-400 animate-pulse">
-              {pressure.waiting} 个请求排队等待
+        {/* 占用率条 */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] text-muted-foreground">
+              并发占用 {pressure.inflight}/{pressure.max_inflight}
             </span>
-          )}
+            {pressure.waiting > 0 && (
+              <span className="text-[10px] text-amber-400 animate-pulse">
+                {pressure.waiting} 个请求排队等待
+              </span>
+            )}
+          </div>
+          <div className="h-2 bg-muted/50 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${barColor} rounded-full transition-all duration-500`}
+              style={{ width: `${Math.min(usage, 100)}%` }}
+            />
+          </div>
         </div>
-        <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-          <div
-            className={`h-full ${barColor} rounded-full transition-all duration-500`}
-            style={{ width: `${Math.min(usage, 100)}%` }}
-          />
-        </div>
-      </div>
 
-      {/* 统计 */}
-      <div className="grid grid-cols-4 gap-2">
-        <div className="bg-white/5 rounded px-2 py-1.5">
-          <p className="text-[10px] text-white/40">已发送</p>
-          <p className="text-sm font-semibold text-white">{pressure.total_sent}</p>
+        {/* 统计 */}
+        <div className="grid grid-cols-4 gap-2">
+          <div className="bg-muted/50 rounded px-2 py-1.5">
+            <p className="text-[10px] text-muted-foreground">已发送</p>
+            <p className="text-sm font-semibold text-foreground">{pressure.total_sent}</p>
+          </div>
+          <div className="bg-muted/50 rounded px-2 py-1.5">
+            <p className="text-[10px] text-muted-foreground">已完成</p>
+            <p className="text-sm font-semibold text-emerald-400">{pressure.total_completed}</p>
+          </div>
+          <div className="bg-muted/50 rounded px-2 py-1.5">
+            <p className="text-[10px] text-muted-foreground">超时</p>
+            <p className={`text-sm font-semibold ${pressure.total_timeout > 0 ? "text-amber-400" : "text-muted-foreground"}`}>
+              {pressure.total_timeout}
+            </p>
+          </div>
+          <div className="bg-muted/50 rounded px-2 py-1.5">
+            <p className="text-[10px] text-muted-foreground">错误</p>
+            <p className={`text-sm font-semibold ${pressure.total_error > 0 ? "text-red-400" : "text-muted-foreground"}`}>
+              {pressure.total_error}
+            </p>
+          </div>
         </div>
-        <div className="bg-white/5 rounded px-2 py-1.5">
-          <p className="text-[10px] text-white/40">已完成</p>
-          <p className="text-sm font-semibold text-emerald-400">{pressure.total_completed}</p>
-        </div>
-        <div className="bg-white/5 rounded px-2 py-1.5">
-          <p className="text-[10px] text-white/40">超时</p>
-          <p className={`text-sm font-semibold ${pressure.total_timeout > 0 ? "text-amber-400" : "text-white/50"}`}>
-            {pressure.total_timeout}
-          </p>
-        </div>
-        <div className="bg-white/5 rounded px-2 py-1.5">
-          <p className="text-[10px] text-white/40">错误</p>
-          <p className={`text-sm font-semibold ${pressure.total_error > 0 ? "text-red-400" : "text-white/50"}`}>
-            {pressure.total_error}
-          </p>
-        </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -464,9 +487,9 @@ export function CollectHealthMonitor() {
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="animate-pulse flex flex-col items-center gap-3">
-          <div className="h-6 w-6 rounded-full border-2 border-white/20 border-t-[#5E6AD2] animate-spin" />
-          <span className="text-xs text-white/40">加载健康数据…</span>
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <span className="text-xs text-muted-foreground">加载健康数据…</span>
         </div>
       </div>
     );
@@ -476,12 +499,9 @@ export function CollectHealthMonitor() {
     return (
       <div className="text-center py-20">
         <p className="text-red-400 text-sm">{error}</p>
-        <button
-          onClick={load}
-          className="mt-3 px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-        >
+        <Button variant="outline" size="sm" className="mt-3" onClick={load}>
           重试
-        </button>
+        </Button>
       </div>
     );
   }
@@ -504,32 +524,32 @@ export function CollectHealthMonitor() {
       {/* 标题 */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">采集健康监控</h2>
-          <p className="text-xs text-white/40 mt-1">
+          <h2 className="text-lg font-semibold text-foreground">采集健康监控</h2>
+          <p className="text-xs text-muted-foreground mt-1">
             日期: {data.date} · 自动刷新{" "}
-            <button
+            <Button
+              variant="link"
+              className={`p-0 h-auto text-xs ${autoRefresh ? "text-emerald-400" : "text-muted-foreground"}`}
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`underline ${autoRefresh ? "text-emerald-400" : "text-white/40"}`}
             >
               {autoRefresh ? "开启" : "关闭"}
-            </button>
+            </Button>
           </p>
         </div>
-        <button
-          onClick={load}
-          className="px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg transition-colors"
-        >
+        <Button variant="outline" size="sm" onClick={load}>
           刷新
-        </button>
+        </Button>
       </div>
 
       {/* 概览卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-          <p className="text-[10px] tracking-wider text-white/40 uppercase">健康评分</p>
-          <p className={`mt-1 text-2xl font-semibold ${scoreColor}`}>{healthScore}%</p>
-          <p className="mt-0.5 text-[10px] text-white/40">非空数据占比</p>
-        </div>
+        <Card>
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] tracking-wider text-muted-foreground uppercase">健康评分</p>
+            <p className={`mt-1 text-2xl font-semibold ${scoreColor}`}>{healthScore}%</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">非空数据占比</p>
+          </CardContent>
+        </Card>
         <StatCard
           label="总文档数"
           value={data.total_documents.toLocaleString()}
@@ -550,48 +570,54 @@ export function CollectHealthMonitor() {
       </div>
 
       {/* Action 数据率 */}
-      <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-        <h3 className="text-sm font-medium text-white/80 mb-3">各接口数据率</h3>
-        {Object.entries(data.action_stats).map(([action, stat]) => (
-          <ActionStatRow key={action} action={action} stat={stat} />
-        ))}
-      </div>
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="text-sm font-medium text-muted-foreground mb-3">各接口数据率</h3>
+          {Object.entries(data.action_stats).map(([action, stat]) => (
+            <ActionStatRow key={action} action={action} stat={stat} />
+          ))}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 连续空数据告警 */}
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-white/80 mb-3">
-            连续空数据告警
-            {data.empty_streaks.length > 0 && (
-              <span className="ml-2 text-[10px] text-white/40">
-                ({data.empty_streaks.length} 项)
-              </span>
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">
+              连续空数据告警
+              {data.empty_streaks.length > 0 && (
+                <span className="ml-2 text-[10px] text-muted-foreground">
+                  ({data.empty_streaks.length} 项)
+                </span>
+              )}
+            </h3>
+            {data.empty_streaks.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">暂无告警</p>
+            ) : (
+              <div className="max-h-60 overflow-y-auto">
+                {data.empty_streaks.map((s, i) => (
+                  <EmptyStreakRow key={i} streak={s} />
+                ))}
+              </div>
             )}
-          </h3>
-          {data.empty_streaks.length === 0 ? (
-            <p className="text-xs text-white/30 py-4 text-center">暂无告警</p>
-          ) : (
-            <div className="max-h-60 overflow-y-auto">
-              {data.empty_streaks.map((s, i) => (
-                <EmptyStreakRow key={i} streak={s} />
-              ))}
-            </div>
-          )}
-        </div>
+          </CardContent>
+        </Card>
 
         {/* 最近采集记录 */}
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-white/80 mb-3">最近采集记录</h3>
-          {data.recent_records.length === 0 ? (
-            <p className="text-xs text-white/30 py-4 text-center">暂无记录</p>
-          ) : (
-            <div className="max-h-60 overflow-y-auto">
-              {data.recent_records.map((r, i) => (
-                <RecentRecordRow key={i} record={r} />
-              ))}
-            </div>
-          )}
-        </div>
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">最近采集记录</h3>
+            {data.recent_records.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">暂无记录</p>
+            ) : (
+              <div className="max-h-60 overflow-y-auto">
+                {data.recent_records.map((r, i) => (
+                  <RecentRecordRow key={i} record={r} />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* 请求压力 */}

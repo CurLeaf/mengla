@@ -1,7 +1,7 @@
 import type { SyncTaskLog } from "../../../services/sync-task-api";
 
 /**
- * 进度条组件
+ * 双色进度条：绿色=已完成, 红色=失败
  */
 export function ProgressBar({ progress }: { progress: SyncTaskLog["progress"] }) {
   const { total, completed, failed } = progress;
@@ -10,21 +10,21 @@ export function ProgressBar({ progress }: { progress: SyncTaskLog["progress"] })
 
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
         <div className="h-full flex">
           <div
-            className="bg-green-500 transition-all duration-300"
+            className="bg-emerald-500 transition-all duration-300"
             style={{ width: `${percent}%` }}
           />
           {failedPercent > 0 && (
             <div
-              className="bg-red-500 transition-all duration-300"
+              className="bg-destructive transition-all duration-300"
               style={{ width: `${failedPercent}%` }}
             />
           )}
         </div>
       </div>
-      <span className="text-xs text-white/60 whitespace-nowrap min-w-[80px]">
+      <span className="text-xs text-muted-foreground whitespace-nowrap min-w-[80px]">
         {completed}/{total} ({percent}%)
       </span>
     </div>

@@ -15,6 +15,7 @@ import {
 import { PeriodSelector } from "./PeriodSelector";
 import { BatchActions } from "./BatchActions";
 import { DataTable } from "./DataTable";
+import { Card, CardContent } from "../../ui/card";
 
 export function PeriodDataManager() {
   const queryClient = useQueryClient();
@@ -128,13 +129,14 @@ export function PeriodDataManager() {
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-white">周期数据</h2>
-        <p className="mt-1 text-xs text-white/60">
+        <h2 className="text-sm font-semibold text-foreground">周期数据</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
           按粒度与日期范围查询各 period_key 在库状态，并补齐缺失数据。
         </p>
       </div>
 
-      <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-4 max-w-2xl">
+      <Card className="max-w-2xl">
+        <CardContent className="p-4 space-y-4">
         <PeriodSelector
           actions={actions}
           onToggleAction={toggleAction}
@@ -165,7 +167,8 @@ export function PeriodDataManager() {
           onQueryStatus={() => statusMutation.mutate()}
           onFillData={() => fillMutation.mutate()}
         />
-      </div>
+        </CardContent>
+      </Card>
 
       <DataTable statusResult={statusResult} statusError={statusError} />
     </section>

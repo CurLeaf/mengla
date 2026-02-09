@@ -1,5 +1,8 @@
 import { format, subDays, subMonths, subQuarters, subYears } from "date-fns";
 import { useCallback, useMemo, useState } from "react";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Select } from "./ui/select";
 
 export type PeriodType = "update" | "month" | "quarter" | "year";
 
@@ -44,15 +47,6 @@ const PERIODS: { value: PeriodType; label: string }[] = [
   { value: "quarter", label: "季榜" },
   { value: "year", label: "年榜" },
 ];
-
-const INPUT_STYLE =
-  "bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:border-[#5E6AD2]";
-
-const BUTTON_BASE =
-  "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50";
-const BUTTON_ACTIVE = "bg-[#5E6AD2] text-white border border-[#5E6AD2]";
-const BUTTON_INACTIVE =
-  "bg-transparent text-white/80 border border-white/20 hover:border-white/40 hover:text-white";
 
 function parseMonthTimest(timest: string): { year: number; month: number } {
   const now = new Date();
@@ -169,9 +163,9 @@ export function RankPeriodSelector({
     switch (period) {
       case "update":
         return (
-          <input
+          <Input
             type="date"
-            className={INPUT_STYLE}
+            className="w-auto"
             value={dateValue}
             max={format(subDays(now, 1), "yyyy-MM-dd")}
             onChange={(e) => handleTimestChange(e.target.value)}
@@ -183,8 +177,8 @@ export function RankPeriodSelector({
         const { year, month } = parseMonthTimest(timest);
         return (
           <div className="flex items-center gap-2">
-            <select
-              className={INPUT_STYLE}
+            <Select
+              className="w-auto"
               value={String(year)}
               onChange={(e) =>
                 handleTimestChange(
@@ -198,9 +192,9 @@ export function RankPeriodSelector({
                   {y}年
                 </option>
               ))}
-            </select>
-            <select
-              className={INPUT_STYLE}
+            </Select>
+            <Select
+              className="w-auto"
               value={String(month)}
               onChange={(e) =>
                 handleTimestChange(
@@ -216,13 +210,13 @@ export function RankPeriodSelector({
                     key={m}
                     value={m}
                     disabled={isCurrentMonth}
-                    className="bg-[#1a1a1f] text-white"
+                    className="bg-muted text-foreground"
                   >
                     {m}月
                   </option>
                 );
               })}
-            </select>
+            </Select>
           </div>
         );
       }
@@ -230,8 +224,8 @@ export function RankPeriodSelector({
         const { year, quarter } = parseQuarterTimest(timest);
         return (
           <div className="flex items-center gap-2">
-            <select
-              className={INPUT_STYLE}
+            <Select
+              className="w-auto"
               value={String(year)}
               onChange={(e) => handleTimestChange(`${e.target.value}-${quarter}`)}
               aria-label="年"
@@ -241,9 +235,9 @@ export function RankPeriodSelector({
                   {y}年
                 </option>
               ))}
-            </select>
-            <select
-              className={INPUT_STYLE}
+            </Select>
+            <Select
+              className="w-auto"
               value={quarter}
               onChange={(e) => handleTimestChange(`${year}-${e.target.value}`)}
               aria-label="季"
@@ -256,20 +250,20 @@ export function RankPeriodSelector({
                     key={q.value}
                     value={q.value}
                     disabled={isCurrentQuarter}
-                    className="bg-[#1a1a1f] text-white"
+                    className="bg-muted text-foreground"
                   >
                     {q.label}
                   </option>
                 );
               })}
-            </select>
+            </Select>
           </div>
         );
       }
       case "year":
         return (
-          <select
-            className={INPUT_STYLE}
+          <Select
+            className="w-auto"
             value={parseYearTimest(timest)}
             onChange={(e) => handleTimestChange(e.target.value)}
             aria-label="年"
@@ -281,13 +275,13 @@ export function RankPeriodSelector({
                   key={y}
                   value={y}
                   disabled={isCurrentYear}
-                  className="bg-[#1a1a1f] text-white"
+                  className="bg-muted text-foreground"
                 >
                   {y}年
                 </option>
               );
             })}
-          </select>
+          </Select>
         );
       default:
         return null;
@@ -296,28 +290,25 @@ export function RankPeriodSelector({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {/* 周期 Tab：参考 erp industry analysis，使用按钮组 */}
-      <div className="flex items-center gap-1 rounded-lg border border-white/10 p-0.5">
+      {/* 周期 Tab：使用 Button 组件，通过 variant 切换激活状态 */}
+      <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
         {PERIODS.map((p) => (
-          <button
+          <Button
             key={p.value}
             type="button"
-            className={
-              period === p.value
-                ? `${BUTTON_BASE} ${BUTTON_ACTIVE}`
-                : `${BUTTON_BASE} ${BUTTON_INACTIVE}`
-            }
+            variant={period === p.value ? "default" : "outline"}
+            size="xs"
             onClick={() => handlePeriodChange(p.value)}
             aria-label={p.label}
             aria-pressed={period === p.value}
           >
             {p.label}
-          </button>
+          </Button>
         ))}
       </div>
 
       <span
-        className="text-xs text-white/50"
+        className="text-xs text-muted-foreground"
         title="选择不同的时间维度查看数据"
       >
         时间

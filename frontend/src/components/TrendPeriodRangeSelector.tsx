@@ -10,6 +10,9 @@ import {
 } from "date-fns";
 import { useCallback, useMemo } from "react";
 import type { PeriodType } from "./RankPeriodSelector";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Select } from "./ui/select";
 
 const PERIODS: { value: PeriodType; label: string }[] = [
   { value: "update", label: "更新日期" },
@@ -17,14 +20,6 @@ const PERIODS: { value: PeriodType; label: string }[] = [
   { value: "quarter", label: "季榜" },
   { value: "year", label: "年榜" },
 ];
-
-const INPUT_STYLE =
-  "bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:border-[#5E6AD2]";
-const BUTTON_BASE =
-  "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50";
-const BUTTON_ACTIVE = "bg-[#5E6AD2] text-white border border-[#5E6AD2]";
-const BUTTON_INACTIVE =
-  "bg-transparent text-white/80 border border-white/20 hover:border-white/40 hover:text-white";
 
 /** 各周期默认范围：更新日期=最近30天，月/季/年=上一周期起止相同 */
 export function getDefaultTrendRangeForPeriod(
@@ -166,9 +161,9 @@ export function TrendPeriodRangeSelector({
       case "update":
         return (
           <>
-            <input
+            <Input
               type="date"
-              className={INPUT_STYLE}
+              className="w-auto"
               value={rangeStart.slice(0, 10)}
               max={yesterday}
               onChange={(e) => {
@@ -177,10 +172,10 @@ export function TrendPeriodRangeSelector({
               }}
               aria-label="开始日期"
             />
-            <span className="text-white/50">至</span>
-            <input
+            <span className="text-muted-foreground">至</span>
+            <Input
               type="date"
-              className={INPUT_STYLE}
+              className="w-auto"
               value={rangeEnd.slice(0, 10)}
               min={rangeStart.slice(0, 10)}
               max={yesterday}
@@ -202,8 +197,8 @@ export function TrendPeriodRangeSelector({
         return (
           <>
             <div className="flex items-center gap-1">
-              <select
-                className={INPUT_STYLE}
+              <Select
+                className="w-auto"
                 value={s.year}
                 onChange={(ev) =>
                   onRangeChange(
@@ -215,9 +210,9 @@ export function TrendPeriodRangeSelector({
                 {yearOptions.map((y) => (
                   <option key={y} value={y}>{y}年</option>
                 ))}
-              </select>
-              <select
-                className={INPUT_STYLE}
+              </Select>
+              <Select
+                className="w-auto"
                 value={s.month}
                 onChange={(ev) =>
                   onRangeChange(
@@ -229,12 +224,12 @@ export function TrendPeriodRangeSelector({
                 {monthOptions.map((m) => (
                   <option key={m} value={m}>{m}月</option>
                 ))}
-              </select>
+              </Select>
             </div>
-            <span className="text-white/50">至</span>
+            <span className="text-muted-foreground">至</span>
             <div className="flex items-center gap-1">
-              <select
-                className={INPUT_STYLE}
+              <Select
+                className="w-auto"
                 value={e.year}
                 onChange={(ev) =>
                   onRangeChange(
@@ -246,9 +241,9 @@ export function TrendPeriodRangeSelector({
                 {yearOptions.map((y) => (
                   <option key={y} value={y}>{y}年</option>
                 ))}
-              </select>
-              <select
-                className={INPUT_STYLE}
+              </Select>
+              <Select
+                className="w-auto"
                 value={e.month}
                 onChange={(ev) =>
                   onRangeChange(
@@ -260,7 +255,7 @@ export function TrendPeriodRangeSelector({
                 {monthOptions.map((m) => (
                   <option key={m} value={m}>{m}月</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </>
         );
@@ -277,8 +272,8 @@ export function TrendPeriodRangeSelector({
         return (
           <>
             <div className="flex items-center gap-1">
-              <select
-                className={INPUT_STYLE}
+              <Select
+                className="w-auto"
                 value={s.year}
                 onChange={(ev) =>
                   onRangeChange(`${ev.target.value}-${s.quarter}`, rangeEnd)
@@ -287,9 +282,9 @@ export function TrendPeriodRangeSelector({
                 {yearOptions.map((y) => (
                   <option key={y} value={y}>{y}年</option>
                 ))}
-              </select>
-              <select
-                className={INPUT_STYLE}
+              </Select>
+              <Select
+                className="w-auto"
                 value={s.quarter}
                 onChange={(ev) =>
                   onRangeChange(`${s.year}-${ev.target.value}`, rangeEnd)
@@ -298,12 +293,12 @@ export function TrendPeriodRangeSelector({
                 {QUARTER_OPTIONS.map((q) => (
                   <option key={q.value} value={q.value}>{q.label}</option>
                 ))}
-              </select>
+              </Select>
             </div>
-            <span className="text-white/50">至</span>
+            <span className="text-muted-foreground">至</span>
             <div className="flex items-center gap-1">
-              <select
-                className={INPUT_STYLE}
+              <Select
+                className="w-auto"
                 value={e.year}
                 onChange={(ev) =>
                   onRangeChange(rangeStart, `${ev.target.value}-${e.quarter}`)
@@ -312,9 +307,9 @@ export function TrendPeriodRangeSelector({
                 {yearOptions.map((y) => (
                   <option key={y} value={y}>{y}年</option>
                 ))}
-              </select>
-              <select
-                className={INPUT_STYLE}
+              </Select>
+              <Select
+                className="w-auto"
                 value={e.quarter}
                 onChange={(ev) =>
                   onRangeChange(rangeStart, `${e.year}-${ev.target.value}`)
@@ -323,7 +318,7 @@ export function TrendPeriodRangeSelector({
                 {QUARTER_OPTIONS.map((q) => (
                   <option key={q.value} value={q.value}>{q.label}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </>
         );
@@ -331,25 +326,25 @@ export function TrendPeriodRangeSelector({
       case "year":
         return (
           <>
-            <select
-              className={INPUT_STYLE}
+            <Select
+              className="w-auto"
               value={rangeStart}
               onChange={(e) => onRangeChange(e.target.value, rangeEnd)}
             >
               {yearOptions.map((y) => (
                 <option key={y} value={y}>{y}年</option>
               ))}
-            </select>
-            <span className="text-white/50">至</span>
-            <select
-              className={INPUT_STYLE}
+            </Select>
+            <span className="text-muted-foreground">至</span>
+            <Select
+              className="w-auto"
               value={rangeEnd}
               onChange={(e) => onRangeChange(rangeStart, e.target.value)}
             >
               {yearOptions.map((y) => (
                 <option key={y} value={y}>{y}年</option>
               ))}
-            </select>
+            </Select>
           </>
         );
       default:
@@ -359,22 +354,19 @@ export function TrendPeriodRangeSelector({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <span className="text-xs text-white/70">趋势日期</span>
-      <div className="flex items-center gap-1 rounded-lg border border-white/10 p-0.5">
+      <span className="text-xs text-muted-foreground">趋势日期</span>
+      <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
         {PERIODS.map((p) => (
-          <button
+          <Button
             key={p.value}
             type="button"
-            className={
-              period === p.value
-                ? `${BUTTON_BASE} ${BUTTON_ACTIVE}`
-                : `${BUTTON_BASE} ${BUTTON_INACTIVE}`
-            }
+            variant={period === p.value ? "default" : "outline"}
+            size="xs"
             onClick={() => handlePeriodChange(p.value)}
             aria-label={p.label}
           >
             {p.label}
-          </button>
+          </Button>
         ))}
       </div>
       {renderRangeInputs()}

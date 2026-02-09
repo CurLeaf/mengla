@@ -1,3 +1,6 @@
+import { Loader2 } from "lucide-react";
+import { Button } from "../../ui/button";
+
 interface BatchActionsProps {
   formValid: boolean;
   hasTrend: boolean;
@@ -28,33 +31,35 @@ export function BatchActions({
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={onQueryStatus}
           disabled={statusPending || !formValid}
           aria-busy={statusPending}
-          className="px-4 py-2 rounded-lg border border-white/10 text-xs text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 disabled:opacity-50 flex items-center gap-2"
           aria-label="查询数据状态"
         >
           {statusPending && (
-            <span className="inline-block w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
+            <Loader2 className="h-3 w-3 animate-spin" />
           )}
           {statusPending ? "查询中…" : "查询数据状态"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={onFillData}
           disabled={fillPending || !formValid}
           aria-busy={fillPending}
-          className="px-4 py-2 rounded-lg border border-white/10 text-xs text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 disabled:opacity-50 flex items-center gap-2"
           aria-label="补齐缺失数据"
           title="扫描选定范围内缺失的数据，并在后台自动补齐"
         >
           {fillPending && (
-            <span className="inline-block w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
+            <Loader2 className="h-3 w-3 animate-spin" />
           )}
           {fillPending ? "提交中…" : "补齐缺失数据"}
-        </button>
+        </Button>
       </div>
 
       {hasTrend && !rangeValid && (

@@ -1,7 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { fetchPanelConfig, updatePanelConfig } from "../../services/panel-config-api";
 import type { PanelModuleConfig } from "../../types/panel-config";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "../ui/table";
+import { Checkbox } from "../ui/checkbox";
+import { Button } from "../ui/button";
 
 function moveOrder<T extends { order: number }>(list: T[], index: number, delta: number): T[] {
   const next = index + delta;
@@ -35,15 +46,15 @@ export function ModuleManager() {
   if (isLoading) {
     return (
       <section>
-        <h2 className="text-sm font-semibold text-white">模块管理</h2>
-        <p className="mt-2 text-xs text-white/60">加载中…</p>
+        <h2 className="text-sm font-semibold text-foreground">模块管理</h2>
+        <p className="mt-2 text-xs text-muted-foreground">加载中…</p>
       </section>
     );
   }
   if (error) {
     return (
       <section>
-        <h2 className="text-sm font-semibold text-white">模块管理</h2>
+        <h2 className="text-sm font-semibold text-foreground">模块管理</h2>
         <p className="mt-2 text-xs text-red-400">{String(error)}</p>
       </section>
     );
@@ -74,70 +85,68 @@ export function ModuleManager() {
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-white">模块管理</h2>
-        <p className="mt-1 text-xs text-white/60">
+        <h2 className="text-sm font-semibold text-foreground">模块管理</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
           启用/禁用行业智能面板下的业务模块，并调整显示顺序。
         </p>
       </div>
-      <div className="rounded-lg border border-white/10 bg-black/20 overflow-hidden">
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="border-b border-white/10 text-white/60">
-              <th className="px-4 py-2.5 font-medium">顺序</th>
-              <th className="px-4 py-2.5 font-medium">名称</th>
-              <th className="px-4 py-2.5 font-medium">ID</th>
-              <th className="px-4 py-2.5 font-medium">启用</th>
-              <th className="px-4 py-2.5 font-medium w-28">操作</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="rounded-lg border border-border overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-border">
+              <TableHead>顺序</TableHead>
+              <TableHead>名称</TableHead>
+              <TableHead>ID</TableHead>
+              <TableHead>启用</TableHead>
+              <TableHead className="w-28">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {modules
               .slice()
               .sort((a, b) => a.order - b.order)
               .map((m, i) => (
-                <tr key={m.id} className="border-b border-white/5 hover:bg-white/5">
-                  <td className="px-4 py-2.5 text-white/80">{m.order + 1}</td>
-                  <td className="px-4 py-2.5 text-white">{m.name}</td>
-                  <td className="px-4 py-2.5 font-mono text-white/60">{m.id}</td>
-                  <td className="px-4 py-2.5">
+                <TableRow key={m.id}>
+                  <TableCell className="text-muted-foreground">{m.order + 1}</TableCell>
+                  <TableCell className="text-foreground">{m.name}</TableCell>
+                  <TableCell className="font-mono text-muted-foreground">{m.id}</TableCell>
+                  <TableCell>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={m.enabled}
-                        onChange={() => toggleEnabled(m.id)}
-                        className="rounded border-white/30 bg-black/40 text-[#5E6AD2] focus:ring-[#5E6AD2]"
+                        onCheckedChange={() => toggleEnabled(m.id)}
                       />
-                      <span className="text-white/80">
+                      <span className="text-foreground/80">
                         {m.enabled ? "是" : "否"}
                       </span>
                     </label>
-                  </td>
-                  <td className="px-4 py-2.5 flex gap-1">
-                    <button
-                      type="button"
+                  </TableCell>
+                  <TableCell className="flex gap-1">
+                    <Button
+                      variant="outline"
+                      size="xs"
                       onClick={() => moveUp(i)}
                       disabled={i === 0}
-                      className="px-2 py-1 rounded border border-white/10 text-white/80 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       上移
-                    </button>
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="xs"
                       onClick={() => moveDown(i)}
                       disabled={i === modules.length - 1}
-                      className="px-2 py-1 rounded border border-white/10 text-white/80 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       下移
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
       {saveMutation.isPending && (
-        <div className="flex items-center gap-2 text-xs text-white/50">
-          <span className="inline-block w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" />
           保存中…
         </div>
       )}

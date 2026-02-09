@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { logout, setUnauthorizedHandler } from "./services/auth";
 import { runPanelTask } from "./services/mengla-admin-api";
 import { useCategoryState } from "./hooks/useCategoryState";
 import { ADMIN_SECTIONS } from "./components/AdminCenter/AdminCenterLayout";
+import { Select } from "./components/ui/select";
+import { Button } from "./components/ui/button";
+import { Separator } from "./components/ui/separator";
 import type { Category, CategoryChild } from "./types/category";
 
 /* ---------- 采集模式说明 ---------- */
@@ -114,57 +118,60 @@ export default function App() {
   const currentMode = currentModeKey ? MODES.find((m) => m.key === currentModeKey) : undefined;
 
   return (
-    <div className="h-screen bg-[#050506] text-white relative overflow-hidden flex flex-col">
+    <div className="h-screen bg-background text-foreground relative overflow-hidden flex flex-col">
       {/* 背景光效 */}
       <div className="pointer-events-none absolute inset-0 opacity-70">
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] bg-[#5E6AD2]/25 blur-[140px]" />
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] bg-primary/25 blur-[140px]" />
         <div className="absolute -left-40 top-40 w-[600px] h-[600px] bg-fuchsia-500/15 blur-[120px]" />
         <div className="absolute -right-40 bottom-0 w-[600px] h-[600px] bg-sky-500/15 blur-[120px]" />
       </div>
 
       <div className="relative flex flex-1 min-h-0">
         {/* ---------- 侧边栏 ---------- */}
-        <aside className="w-64 shrink-0 bg-black/40 border-r border-white/10 backdrop-blur-xl flex flex-col">
-          <div className="px-5 py-5 border-b border-white/10">
-            <div className="text-[11px] font-mono tracking-[0.25em] text-white/40 uppercase">
+        <aside className="w-64 shrink-0 bg-card/80 border-r border-border backdrop-blur-xl flex flex-col">
+          <div className="px-5 py-5">
+            <div className="text-[11px] font-mono tracking-[0.25em] text-muted-foreground uppercase">
               MengLa
             </div>
             <div className="mt-2 flex items-center justify-between gap-2">
-              <span className="text-lg font-semibold bg-gradient-to-b from-white via-white/90 to-white/60 bg-clip-text text-transparent">
+              <span className="text-lg font-semibold bg-gradient-to-b from-foreground via-white/90 to-white/60 bg-clip-text text-transparent">
                 行业智能面板
               </span>
               {isDashboard && (
                 <div className="flex items-center gap-1">
-                  <select
+                  <Select
                     value={collectMode}
                     onChange={(e) => setCollectMode(e.target.value as "current" | "fill" | "force")}
                     disabled={triggerLoading}
-                    className="px-1.5 py-1 text-[10px] bg-[#0F0F12] border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 focus:outline-none"
+                    className="h-7 w-auto px-1.5 py-1 text-[10px] border-primary/40 text-primary"
                     title={COLLECT_MODE_TIPS[collectMode]}
                     aria-label="选择采集范围"
                   >
                     <option value="current">当前</option>
                     <option value="fill">补齐</option>
                     <option value="force">全部</option>
-                  </select>
-                  <button
-                    type="button"
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="xs"
                     onClick={() => triggerManualCollect()}
                     disabled={triggerLoading}
-                    className="px-2 py-1 text-[10px] bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1"
+                    className="text-[10px] border-primary/40 text-primary bg-primary/20 hover:bg-primary/30"
                     aria-label="开始采集数据"
                     aria-busy={triggerLoading}
                     title={COLLECT_MODE_TIPS[collectMode]}
                   >
                     {triggerLoading && (
-                      <span className="inline-block w-3 h-3 border border-[#5E6AD2] border-t-transparent rounded-full animate-spin" />
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                     )}
                     {triggerLoading ? "采集中..." : "采集"}
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
           </div>
+
+          <Separator />
 
           <nav className="flex-1 overflow-y-auto py-3" aria-label="主导航">
             {MODES.map((item) => (
@@ -174,12 +181,12 @@ export default function App() {
                 end={item.path === "/"}
                 className={({ isActive }: { isActive: boolean }) =>
                   `w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors ${
-                    isActive ? "bg-white/10 text-white" : "text-white/65 hover:bg-white/5"
+                    isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"
                   }`
                 }
               >
                 <span>{item.name}</span>
-                <span className="text-[10px] font-mono tracking-[0.2em] text-white/45">
+                <span className="text-[10px] font-mono tracking-[0.2em] text-muted-foreground">
                   {item.badge}
                 </span>
               </NavLink>
@@ -191,13 +198,13 @@ export default function App() {
                 onClick={() => setAdminExpanded((prev) => !prev)}
                 className={`w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors cursor-pointer ${
                   location.pathname.startsWith("/admin")
-                    ? "text-white"
-                    : "text-white/65 hover:bg-white/5"
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:bg-accent/50"
                 }`}
               >
                 <span>管理中心</span>
                 <svg
-                  className={`w-3 h-3 text-white/45 transition-transform duration-200 ${
+                  className={`w-3 h-3 text-muted-foreground transition-transform duration-200 ${
                     adminExpanded ? "rotate-90" : ""
                   }`}
                   fill="none"
@@ -222,8 +229,8 @@ export default function App() {
                     className={({ isActive }: { isActive: boolean }) =>
                       `w-full flex items-center px-5 pl-8 py-2 text-xs transition-colors ${
                         isActive
-                          ? "bg-white/10 text-white"
-                          : "text-white/55 hover:bg-white/5 hover:text-white/75"
+                          ? "bg-accent text-foreground"
+                          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground/75"
                       }`
                     }
                   >
@@ -236,42 +243,46 @@ export default function App() {
               to="/token"
               className={({ isActive }: { isActive: boolean }) =>
                 `w-full flex items-center justify-between px-5 py-2.5 text-xs transition-colors ${
-                  isActive ? "bg-white/10 text-white" : "text-white/65 hover:bg-white/5"
+                  isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"
                 }`
               }
             >
               <span>Token 管理</span>
-              <span className="text-[10px] font-mono tracking-[0.2em] text-white/45">TOKEN</span>
+              <span className="text-[10px] font-mono tracking-[0.2em] text-muted-foreground">TOKEN</span>
             </NavLink>
           </nav>
+
           {/* 登出 */}
-          <div className="border-t border-white/10 px-5 py-3">
+          <Separator />
+          <div className="px-5 py-3">
             {!showLogoutConfirm ? (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowLogoutConfirm(true)}
-                className="w-full text-left text-xs text-white/45 hover:text-white/70 transition-colors"
+                className="w-full justify-start px-0 text-xs text-muted-foreground hover:text-foreground/70 hover:bg-transparent"
                 aria-label="退出登录"
               >
                 退出登录
-              </button>
+              </Button>
             ) : (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-white/60">确认退出？</span>
-                <button
-                  type="button"
+                <span className="text-xs text-muted-foreground">确认退出？</span>
+                <Button
+                  variant="destructive"
+                  size="xs"
                   onClick={() => { setShowLogoutConfirm(false); logout(); }}
-                  className="px-2 py-1 text-[11px] rounded bg-red-600 hover:bg-red-700 text-white transition-colors"
                 >
                   确认
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="outline"
+                  size="xs"
                   onClick={() => setShowLogoutConfirm(false)}
-                  className="px-2 py-1 text-[11px] rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
+                  className="text-muted-foreground"
                 >
                   取消
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -283,17 +294,17 @@ export default function App() {
             <header className="flex flex-col gap-4 mb-6">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <p className="text-xs font-mono tracking-[0.25em] text-white/50 uppercase">DASHBOARD</p>
-                  <h1 className="mt-2 text-2xl font-semibold bg-gradient-to-b from-white via-white/90 to-white/60 bg-clip-text text-transparent">
+                  <p className="text-xs font-mono tracking-[0.25em] text-muted-foreground uppercase">DASHBOARD</p>
+                  <h1 className="mt-2 text-2xl font-semibold bg-gradient-to-b from-foreground via-white/90 to-white/60 bg-clip-text text-transparent">
                     {currentMode?.name ?? "行业总览"}
                   </h1>
-                  <p className="mt-1 text-[11px] text-white/55">当前类目：{selectedCatLabel}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">当前类目：{selectedCatLabel}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <select
-                    className="bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:border-[#5E6AD2]"
+                  <Select
+                    className="w-auto rounded-lg text-xs"
                     value={selectedCatId1 ?? ""}
-                    onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                    onChange={(e) => {
                       const v = e.target.value || null;
                       setSelectedCatId1(v);
                       setSelectedCatId2(null);
@@ -305,13 +316,11 @@ export default function App() {
                         {cat.catNameCn || cat.catName}
                       </option>
                     ))}
-                  </select>
-                  <select
-                    className="bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:border-[#5E6AD2]"
+                  </Select>
+                  <Select
+                    className="w-auto rounded-lg text-xs"
                     value={selectedCatId2 ?? ""}
-                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                      setSelectedCatId2(e.target.value || null)
-                    }
+                    onChange={(e) => setSelectedCatId2(e.target.value || null)}
                     aria-label="二级分类"
                   >
                     <option value="">全部</option>
@@ -320,10 +329,10 @@ export default function App() {
                         {child.catNameCn || child.catName}
                       </option>
                     ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 disabled:opacity-50"
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                       setFetchTrigger((prev) => prev + 1);
                       queryClient.invalidateQueries({ queryKey: ["mengla"] });
@@ -332,7 +341,7 @@ export default function App() {
                     aria-label="刷新数据"
                   >
                     刷新
-                  </button>
+                  </Button>
                 </div>
               </div>
             </header>

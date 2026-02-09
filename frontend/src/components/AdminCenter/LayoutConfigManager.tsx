@@ -1,8 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { fetchPanelConfig, updatePanelConfig } from "../../services/panel-config-api";
 import type { PanelLayoutConfig } from "../../types/panel-config";
+import { Card, CardContent } from "../ui/card";
+import { Select } from "../ui/select";
+import { Checkbox } from "../ui/checkbox";
+import { Button } from "../ui/button";
 
 const PERIOD_OPTIONS = [
   { value: "update", label: "更新日期" },
@@ -54,15 +59,15 @@ export function LayoutConfigManager() {
   if (isLoading) {
     return (
       <section>
-        <h2 className="text-sm font-semibold text-white">布局配置</h2>
-        <p className="mt-2 text-xs text-white/60">加载中…</p>
+        <h2 className="text-sm font-semibold text-foreground">布局配置</h2>
+        <p className="mt-2 text-xs text-muted-foreground">加载中…</p>
       </section>
     );
   }
   if (error) {
     return (
       <section>
-        <h2 className="text-sm font-semibold text-white">布局配置</h2>
+        <h2 className="text-sm font-semibold text-foreground">布局配置</h2>
         <p className="mt-2 text-xs text-red-400">{String(error)}</p>
       </section>
     );
@@ -71,56 +76,58 @@ export function LayoutConfigManager() {
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-white">布局配置</h2>
-        <p className="mt-1 text-xs text-white/60">
+        <h2 className="text-sm font-semibold text-foreground">布局配置</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
           配置各模块在面板上的默认时间周期与展示选项。
         </p>
       </div>
-      <div className="rounded-lg border border-white/10 bg-black/20 p-4 space-y-4 max-w-md">
-        <div>
-          <label className="block text-xs font-medium text-white/80 mb-1.5">
-            默认周期
-          </label>
-          <select
-            value={defaultPeriod}
-            onChange={(e) => setDefaultPeriod(e.target.value)}
-            className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50"
+      <Card className="max-w-md">
+        <CardContent className="p-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-foreground/80 mb-1.5">
+              默认周期
+            </label>
+            <Select
+              value={defaultPeriod}
+              onChange={(e) => setDefaultPeriod(e.target.value)}
+              className="text-xs"
+            >
+              {PERIOD_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="showRankPeriodSelector"
+              checked={showRankPeriodSelector}
+              onCheckedChange={(checked) =>
+                setShowRankPeriodSelector(checked === true)
+              }
+            />
+            <label
+              htmlFor="showRankPeriodSelector"
+              className="text-xs text-foreground/80 cursor-pointer"
+            >
+              显示榜周期选择器（非总览模式）
+            </label>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSave}
+            disabled={saveMutation.isPending}
+            aria-busy={saveMutation.isPending}
           >
-            {PERIOD_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="showRankPeriodSelector"
-            checked={showRankPeriodSelector}
-            onChange={(e) => setShowRankPeriodSelector(e.target.checked)}
-            className="rounded border-white/30 bg-black/40 text-[#5E6AD2] focus:ring-[#5E6AD2]"
-          />
-          <label
-            htmlFor="showRankPeriodSelector"
-            className="text-xs text-white/80 cursor-pointer"
-          >
-            显示榜周期选择器（非总览模式）
-          </label>
-        </div>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saveMutation.isPending}
-          aria-busy={saveMutation.isPending}
-          className="px-4 py-2 rounded-lg border border-white/10 text-xs text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 disabled:opacity-50 flex items-center gap-2"
-        >
-          {saveMutation.isPending && (
-            <span className="inline-block w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
-          )}
-          {saveMutation.isPending ? "保存中…" : "保存布局配置"}
-        </button>
-      </div>
+            {saveMutation.isPending && (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            )}
+            {saveMutation.isPending ? "保存中…" : "保存布局配置"}
+          </Button>
+        </CardContent>
+      </Card>
     </section>
   );
 }

@@ -2,9 +2,11 @@ import { useMemo } from "react";
 import {
   GRANULARITY_OPTIONS,
   ACTION_OPTIONS,
-  INPUT_STYLE,
   QUARTER_OPTIONS,
 } from "./shared";
+import { Select } from "../../ui/select";
+import { Checkbox } from "../../ui/checkbox";
+import { Input } from "../../ui/input";
 
 interface PeriodSelectorProps {
   /* ---- actions ---- */
@@ -66,10 +68,9 @@ export function PeriodSelector({
         return (
           <>
             <div>
-              <label className="block text-xs font-medium text-white/80 mb-1.5">开始日期</label>
-              <input
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">开始日期</label>
+              <Input
                 type="date"
-                className={INPUT_STYLE}
                 value={rangeStart.slice(0, 10)}
                 max={yesterday}
                 onChange={(e) => onRangeStartChange(e.target.value)}
@@ -77,10 +78,9 @@ export function PeriodSelector({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/80 mb-1.5">结束日期</label>
-              <input
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">结束日期</label>
+              <Input
                 type="date"
-                className={INPUT_STYLE}
                 value={rangeEnd.slice(0, 10)}
                 min={rangeStart.slice(0, 10)}
                 max={yesterday}
@@ -100,25 +100,25 @@ export function PeriodSelector({
         return (
           <>
             <div>
-              <label className="block text-xs font-medium text-white/80 mb-1.5">开始</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">开始</label>
               <div className="flex items-center gap-1">
-                <select className={INPUT_STYLE} value={s.year} onChange={(ev) => onRangeStartChange(`${ev.target.value}-${String(s.month).padStart(2, "0")}`)} aria-label="开始年">
+                <Select value={s.year} onChange={(ev) => onRangeStartChange(`${ev.target.value}-${String(s.month).padStart(2, "0")}`)} aria-label="开始年">
                   {yearOptions.map((y) => <option key={y} value={y}>{y}年</option>)}
-                </select>
-                <select className={INPUT_STYLE} value={s.month} onChange={(ev) => onRangeStartChange(`${s.year}-${String(ev.target.value).padStart(2, "0")}`)} aria-label="开始月">
+                </Select>
+                <Select value={s.month} onChange={(ev) => onRangeStartChange(`${s.year}-${String(ev.target.value).padStart(2, "0")}`)} aria-label="开始月">
                   {monthOptions.map((m) => <option key={m} value={m}>{m}月</option>)}
-                </select>
+                </Select>
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/80 mb-1.5">结束</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">结束</label>
               <div className="flex items-center gap-1">
-                <select className={INPUT_STYLE} value={e.year} onChange={(ev) => onRangeEndChange(`${ev.target.value}-${String(e.month).padStart(2, "0")}`)} aria-label="结束年">
+                <Select value={e.year} onChange={(ev) => onRangeEndChange(`${ev.target.value}-${String(e.month).padStart(2, "0")}`)} aria-label="结束年">
                   {yearOptions.map((y) => <option key={y} value={y}>{y}年</option>)}
-                </select>
-                <select className={INPUT_STYLE} value={e.month} onChange={(ev) => onRangeEndChange(`${e.year}-${String(ev.target.value).padStart(2, "0")}`)} aria-label="结束月">
+                </Select>
+                <Select value={e.month} onChange={(ev) => onRangeEndChange(`${e.year}-${String(ev.target.value).padStart(2, "0")}`)} aria-label="结束月">
                   {monthOptions.map((m) => <option key={m} value={m}>{m}月</option>)}
-                </select>
+                </Select>
               </div>
             </div>
           </>
@@ -136,25 +136,25 @@ export function PeriodSelector({
         return (
           <>
             <div>
-              <label className="block text-xs font-medium text-white/80 mb-1.5">开始</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">开始</label>
               <div className="flex items-center gap-1">
-                <select className={INPUT_STYLE} value={s.year} onChange={(ev) => onRangeStartChange(`${ev.target.value}-${s.quarter}`)} aria-label="开始年">
+                <Select value={s.year} onChange={(ev) => onRangeStartChange(`${ev.target.value}-${s.quarter}`)} aria-label="开始年">
                   {yearOptions.map((y) => <option key={y} value={y}>{y}年</option>)}
-                </select>
-                <select className={INPUT_STYLE} value={s.quarter} onChange={(ev) => onRangeStartChange(`${s.year}-${ev.target.value}`)} aria-label="开始季">
+                </Select>
+                <Select value={s.quarter} onChange={(ev) => onRangeStartChange(`${s.year}-${ev.target.value}`)} aria-label="开始季">
                   {QUARTER_OPTIONS.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
-                </select>
+                </Select>
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/80 mb-1.5">结束</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">结束</label>
               <div className="flex items-center gap-1">
-                <select className={INPUT_STYLE} value={e.year} onChange={(ev) => onRangeEndChange(`${ev.target.value}-${e.quarter}`)} aria-label="结束年">
+                <Select value={e.year} onChange={(ev) => onRangeEndChange(`${ev.target.value}-${e.quarter}`)} aria-label="结束年">
                   {yearOptions.map((y) => <option key={y} value={y}>{y}年</option>)}
-                </select>
-                <select className={INPUT_STYLE} value={e.quarter} onChange={(ev) => onRangeEndChange(`${e.year}-${ev.target.value}`)} aria-label="结束季">
+                </Select>
+                <Select value={e.quarter} onChange={(ev) => onRangeEndChange(`${e.year}-${ev.target.value}`)} aria-label="结束季">
                   {QUARTER_OPTIONS.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
-                </select>
+                </Select>
               </div>
             </div>
           </>
@@ -164,16 +164,16 @@ export function PeriodSelector({
         return (
           <>
             <div>
-              <label className="block text-xs font-medium text-white/80 mb-1.5">开始年</label>
-              <select className={INPUT_STYLE} value={rangeStart} onChange={(e) => onRangeStartChange(e.target.value)} aria-label="开始年">
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">开始年</label>
+              <Select value={rangeStart} onChange={(e) => onRangeStartChange(e.target.value)} aria-label="开始年">
                 {yearOptions.map((y) => <option key={y} value={y}>{y}年</option>)}
-              </select>
+              </Select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/80 mb-1.5">结束年</label>
-              <select className={INPUT_STYLE} value={rangeEnd} onChange={(e) => onRangeEndChange(e.target.value)} aria-label="结束年">
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">结束年</label>
+              <Select value={rangeEnd} onChange={(e) => onRangeEndChange(e.target.value)} aria-label="结束年">
                 {yearOptions.map((y) => <option key={y} value={y}>{y}年</option>)}
-              </select>
+              </Select>
             </div>
           </>
         );
@@ -188,8 +188,8 @@ export function PeriodSelector({
       case "day":
         return (
           <div>
-            <label className="block text-xs font-medium text-white/80 mb-1.5">选择日期</label>
-            <input type="date" className={INPUT_STYLE} value={singleTimest.slice(0, 10)} max={yesterday} onChange={(e) => onSingleTimestChange(e.target.value)} aria-label="日期" />
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">选择日期</label>
+            <Input type="date" value={singleTimest.slice(0, 10)} max={yesterday} onChange={(e) => onSingleTimestChange(e.target.value)} aria-label="日期" />
           </div>
         );
       case "month": {
@@ -200,14 +200,14 @@ export function PeriodSelector({
         const s = parse(singleTimest);
         return (
           <div>
-            <label className="block text-xs font-medium text-white/80 mb-1.5">选择月</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">选择月</label>
             <div className="flex items-center gap-1">
-              <select className={INPUT_STYLE} value={s.year} onChange={(ev) => onSingleTimestChange(`${ev.target.value}-${String(s.month).padStart(2, "0")}`)} aria-label="年">
+              <Select value={s.year} onChange={(ev) => onSingleTimestChange(`${ev.target.value}-${String(s.month).padStart(2, "0")}`)} aria-label="年">
                 {yearOptions.map((y) => <option key={y} value={y}>{y}年</option>)}
-              </select>
-              <select className={INPUT_STYLE} value={s.month} onChange={(ev) => onSingleTimestChange(`${s.year}-${String(ev.target.value).padStart(2, "0")}`)} aria-label="月">
+              </Select>
+              <Select value={s.month} onChange={(ev) => onSingleTimestChange(`${s.year}-${String(ev.target.value).padStart(2, "0")}`)} aria-label="月">
                 {monthOptions.map((m) => <option key={m} value={m}>{m}月</option>)}
-              </select>
+              </Select>
             </div>
           </div>
         );
@@ -222,14 +222,14 @@ export function PeriodSelector({
         const s = parse(singleTimest);
         return (
           <div>
-            <label className="block text-xs font-medium text-white/80 mb-1.5">选择季</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">选择季</label>
             <div className="flex items-center gap-1">
-              <select className={INPUT_STYLE} value={s.year} onChange={(ev) => onSingleTimestChange(`${ev.target.value}-${s.quarter}`)} aria-label="年">
+              <Select value={s.year} onChange={(ev) => onSingleTimestChange(`${ev.target.value}-${s.quarter}`)} aria-label="年">
                 {yearOptions.map((y) => <option key={y} value={y}>{y}年</option>)}
-              </select>
-              <select className={INPUT_STYLE} value={s.quarter} onChange={(ev) => onSingleTimestChange(`${s.year}-${ev.target.value}`)} aria-label="季">
+              </Select>
+              <Select value={s.quarter} onChange={(ev) => onSingleTimestChange(`${s.year}-${ev.target.value}`)} aria-label="季">
                 {QUARTER_OPTIONS.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
-              </select>
+              </Select>
             </div>
           </div>
         );
@@ -237,10 +237,10 @@ export function PeriodSelector({
       case "year":
         return (
           <div>
-            <label className="block text-xs font-medium text-white/80 mb-1.5">选择年</label>
-            <select className={INPUT_STYLE} value={singleTimest} onChange={(e) => onSingleTimestChange(e.target.value)} aria-label="年">
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">选择年</label>
+            <Select value={singleTimest} onChange={(e) => onSingleTimestChange(e.target.value)} aria-label="年">
               {yearOptions.map((y) => <option key={y} value={y}>{y}年</option>)}
-            </select>
+            </Select>
           </div>
         );
       default:
@@ -252,17 +252,15 @@ export function PeriodSelector({
     <>
       {/* 接口选择 */}
       <div>
-        <label className="block text-xs font-medium text-white/80 mb-2">接口（actions）</label>
+        <label className="block text-xs font-medium text-muted-foreground mb-2">接口（actions）</label>
         <div className="flex flex-wrap gap-3">
           {ACTION_OPTIONS.map((opt) => (
             <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={actions.includes(opt.value)}
-                onChange={() => onToggleAction(opt.value)}
-                className="rounded border-white/30 bg-black/40 text-[#5E6AD2] focus:ring-[#5E6AD2]"
+                onCheckedChange={() => onToggleAction(opt.value)}
               />
-              <span className="text-xs text-white/80">{opt.label}</span>
+              <span className="text-xs text-muted-foreground">{opt.label}</span>
             </label>
           ))}
         </div>
@@ -271,18 +269,18 @@ export function PeriodSelector({
       {/* 单时间选择 */}
       {hasNonTrend && (
         <div>
-          <p className="text-xs font-medium text-white/80 mb-1.5">单时间（蓝海/热销/潜力/行业区间）</p>
+          <p className="text-xs font-medium text-muted-foreground mb-1.5">单时间（蓝海/热销/潜力/行业区间）</p>
           <div className="mb-2">
-            <label className="block text-xs font-medium text-white/60 mb-1">粒度</label>
-            <select
+            <label className="block text-xs font-medium text-muted-foreground/70 mb-1">粒度</label>
+            <Select
               value={singleGranularity}
               onChange={(e) => onSingleGranularityChange(e.target.value)}
-              className={`${INPUT_STYLE} w-full max-w-[8rem]`}
+              className="w-full max-w-[8rem]"
             >
               {GRANULARITY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {renderSingleTimeInputs()}
@@ -293,18 +291,18 @@ export function PeriodSelector({
       {/* 趋势范围选择 */}
       {hasTrend && (
         <div>
-          <p className="text-xs font-medium text-white/80 mb-1.5">时间范围（行业趋势）</p>
+          <p className="text-xs font-medium text-muted-foreground mb-1.5">时间范围（行业趋势）</p>
           <div className="mb-2">
-            <label className="block text-xs font-medium text-white/60 mb-1">粒度</label>
-            <select
+            <label className="block text-xs font-medium text-muted-foreground/70 mb-1">粒度</label>
+            <Select
               value={trendGranularity}
               onChange={(e) => onTrendGranularityChange(e.target.value)}
-              className={`${INPUT_STYLE} w-full max-w-[8rem]`}
+              className="w-full max-w-[8rem]"
             >
               {GRANULARITY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {renderRangeInputs()}
@@ -313,7 +311,7 @@ export function PeriodSelector({
       )}
 
       {!hasNonTrend && !hasTrend && (
-        <p className="text-xs text-white/50">请至少勾选一个接口。</p>
+        <p className="text-xs text-muted-foreground">请至少勾选一个接口。</p>
       )}
     </>
   );

@@ -18,9 +18,6 @@ export const ACTION_OPTIONS = [
 
 export const NON_TREND_ACTIONS = ["high", "hot", "chance", "industryViewV2"];
 
-export const INPUT_STYLE =
-  "bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:border-[#5E6AD2]";
-
 export const QUARTER_OPTIONS = [
   { value: "Q1", label: "Q1" },
   { value: "Q2", label: "Q2" },

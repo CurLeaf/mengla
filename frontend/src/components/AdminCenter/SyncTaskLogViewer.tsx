@@ -19,6 +19,18 @@ import { StatusBadge } from "./sync-task-log/StatusBadge";
 import { ProgressBar } from "./sync-task-log/ProgressBar";
 import { TriggerBadge } from "./sync-task-log/TriggerBadge";
 import { ConfirmDialog } from "./sync-task-log/ConfirmDialog";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "../ui/table";
+import { Select } from "../ui/select";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Card } from "../ui/card";
 
 /**
  * 将后端返回的 UTC 时间字符串解析为 Date 对象。
@@ -203,8 +215,8 @@ export function SyncTaskLogViewer() {
   if (isLoading) {
     return (
       <section>
-        <h2 className="text-sm font-semibold text-white">同步日志</h2>
-        <p className="mt-2 text-xs text-white/60">加载中…</p>
+        <h2 className="text-sm font-semibold text-foreground">同步日志</h2>
+        <p className="mt-2 text-xs text-muted-foreground">加载中…</p>
       </section>
     );
   }
@@ -212,7 +224,7 @@ export function SyncTaskLogViewer() {
   if (error) {
     return (
       <section>
-        <h2 className="text-sm font-semibold text-white">同步日志</h2>
+        <h2 className="text-sm font-semibold text-foreground">同步日志</h2>
         <p className="mt-2 text-xs text-red-400">{String(error)}</p>
       </section>
     );
@@ -226,16 +238,16 @@ export function SyncTaskLogViewer() {
     <section className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-white">同步日志</h2>
-          <p className="mt-1 text-xs text-white/60">
+          <h2 className="text-sm font-semibold text-foreground">同步日志</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
             查看当天的数据采集任务执行状态。
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <select
+          <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-[#0F0F12] border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50"
+            className="w-auto text-xs"
             aria-label="按状态筛选"
           >
             <option value="all">全部状态</option>
@@ -243,15 +255,15 @@ export function SyncTaskLogViewer() {
             <option value="COMPLETED">已完成</option>
             <option value="FAILED">失败</option>
             <option value="CANCELLED">已取消</option>
-          </select>
-          <span className="text-xs text-white/40">
+          </Select>
+          <span className="text-xs text-muted-foreground">
             更新: {lastUpdated}
           </span>
         </div>
       </div>
 
       {/* ---- 调度器控制栏 ---- */}
-      <div className="rounded-lg border border-white/10 bg-black/20 px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+      <Card className="px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
         {/* 左：调度器状态 */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -261,12 +273,12 @@ export function SyncTaskLogViewer() {
                   ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
                   : schedulerStatus?.state === "paused"
                   ? "bg-amber-400 animate-pulse"
-                  : "bg-white/20"
+                  : "bg-muted-foreground/30"
               }`}
             />
-            <span className="text-xs text-white/70">调度器</span>
+            <span className="text-xs text-muted-foreground">调度器</span>
             {schedulerLoading ? (
-              <span className="text-[10px] text-white/40">加载中…</span>
+              <span className="text-[10px] text-muted-foreground">加载中…</span>
             ) : (
               <span
                 className={`text-xs font-medium ${
@@ -274,7 +286,7 @@ export function SyncTaskLogViewer() {
                     ? "text-emerald-400"
                     : schedulerStatus?.state === "paused"
                     ? "text-amber-400"
-                    : "text-white/40"
+                    : "text-muted-foreground"
                 }`}
               >
                 {schedulerStatus?.state === "running"
@@ -288,7 +300,7 @@ export function SyncTaskLogViewer() {
             )}
           </div>
           {schedulerStatus && (
-            <span className="text-[10px] text-white/40">
+            <span className="text-[10px] text-muted-foreground">
               活跃 {schedulerStatus.active_jobs.length} · 暂停 {schedulerStatus.paused_jobs.length} · 后台 {schedulerStatus.background_tasks}
             </span>
           )}
@@ -304,195 +316,214 @@ export function SyncTaskLogViewer() {
         {/* 右：操作按钮 */}
         <div className="flex items-center gap-2">
           {schedulerStatus?.state === "paused" ? (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="xs"
               onClick={() => resumeMut.mutate()}
               disabled={resumeMut.isPending}
-              className="px-3 py-1.5 text-xs rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+              className="border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-400"
               title="恢复定时任务调度（每日采集、补数检查等将恢复自动触发）"
             >
               {resumeMut.isPending ? "恢复中…" : "恢复调度"}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="xs"
               onClick={() => pauseMut.mutate()}
               disabled={pauseMut.isPending || schedulerStatus?.state === "stopped"}
-              className="px-3 py-1.5 text-xs rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+              className="border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-400"
               title="暂停定时任务调度（阻止新定时任务触发，不影响正在运行的任务）"
             >
               {pauseMut.isPending ? "暂停中…" : "暂停调度"}
-            </button>
+            </Button>
           )}
 
           {!cancelAllConfirm ? (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="xs"
               onClick={() => setCancelAllConfirm(true)}
               disabled={cancelAllMut.isPending}
-              className="px-3 py-1.5 text-xs rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+              className="border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-400"
               title="立即终止所有正在运行的后台采集任务"
             >
               取消全部任务
-            </button>
+            </Button>
           ) : (
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] text-red-300">确定？</span>
-              <button
+              <Button
                 type="button"
+                variant="destructive"
+                size="xs"
                 onClick={() => {
                   cancelAllMut.mutate();
                   setCancelAllConfirm(false);
                 }}
                 disabled={cancelAllMut.isPending}
-                className="px-2.5 py-1 text-xs rounded bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50 transition-colors"
+                className="font-medium"
               >
                 {cancelAllMut.isPending ? "取消中…" : "确认"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 onClick={() => setCancelAllConfirm(false)}
-                className="px-2.5 py-1 text-xs rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
+                className="text-muted-foreground"
               >
                 算了
-              </button>
+              </Button>
             </div>
           )}
         </div>
-      </div>
+      </Card>
 
       {tasks && tasks.length > 0 ? (() => {
         const filteredTasks = statusFilter === "all"
           ? tasks
           : tasks.filter((t) => t.status === statusFilter);
         return filteredTasks.length > 0 ? (
-        <div className="rounded-lg border border-white/10 bg-black/20 overflow-hidden">
-          <table className="w-full text-left text-xs" role="table" aria-label="同步任务列表">
-            <thead>
-              <tr className="border-b border-white/10 text-white/60">
-                <th className="px-4 py-2.5 font-medium">任务名称</th>
-                <th className="px-4 py-2.5 font-medium w-20">状态</th>
-                <th className="px-4 py-2.5 font-medium w-48">进度</th>
-                <th className="px-4 py-2.5 font-medium w-20">开始时间</th>
-                <th className="px-4 py-2.5 font-medium w-20">耗时</th>
-                <th className="px-4 py-2.5 font-medium w-16">触发</th>
-                <th className="px-4 py-2.5 font-medium w-24 text-right">操作</th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="overflow-hidden">
+          <Table role="table" aria-label="同步任务列表">
+            <TableHeader>
+              <TableRow>
+                <TableHead>任务名称</TableHead>
+                <TableHead className="w-20">状态</TableHead>
+                <TableHead className="w-48">进度</TableHead>
+                <TableHead className="w-20">开始时间</TableHead>
+                <TableHead className="w-20">耗时</TableHead>
+                <TableHead className="w-16">触发</TableHead>
+                <TableHead className="w-24 text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {filteredTasks.map((task) => (
-                <tr
-                  key={task.id}
-                  className="border-b border-white/5 hover:bg-white/5"
-                >
-                  <td className="px-4 py-2.5 text-white">{task.task_name}</td>
-                  <td className="px-4 py-2.5">
+                <TableRow key={task.id}>
+                  <TableCell className="text-foreground">{task.task_name}</TableCell>
+                  <TableCell>
                     <StatusBadge status={task.status} />
-                  </td>
-                  <td className="px-4 py-2.5">
+                  </TableCell>
+                  <TableCell>
                     <ProgressBar progress={task.progress} />
-                  </td>
-                  <td className="px-4 py-2.5 text-white/60 font-mono">
+                  </TableCell>
+                  <TableCell className="text-muted-foreground font-mono">
                     {formatTime(task.started_at)}
-                  </td>
-                  <td className="px-4 py-2.5 text-white/60 font-mono">
+                  </TableCell>
+                  <TableCell className="text-muted-foreground font-mono">
                     {calcDuration(task.started_at, task.finished_at)}
-                  </td>
-                  <td className="px-4 py-2.5">
+                  </TableCell>
+                  <TableCell>
                     <TriggerBadge trigger={task.trigger} />
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       {task.status === "RUNNING" && (
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="xs"
                           onClick={() => setDialog({ type: "cancel", task })}
-                          className="rounded px-2 py-1 text-xs text-yellow-400 hover:bg-yellow-500/20 transition-colors"
+                          className="text-yellow-400 hover:text-yellow-400 hover:bg-yellow-500/20"
                           title="取消任务"
                         >
                           取消
-                        </button>
+                        </Button>
                       )}
                       {(task.status === "FAILED" || task.status === "CANCELLED") && (
                         retryConfirm === task.task_id ? (
                           <div className="flex items-center gap-1">
-                            <button
+                            <Button
+                              variant="default"
+                              size="xs"
                               onClick={() => { retryMut.mutate(task.task_id); setRetryConfirm(null); }}
                               disabled={retryMut.isPending}
-                              className="rounded px-2 py-1 text-xs bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 transition-colors"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
                             >
                               {retryMut.isPending ? "启动中…" : "确认"}
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="xs"
                               onClick={() => setRetryConfirm(null)}
-                              className="rounded px-2 py-1 text-xs text-white/50 hover:bg-white/5 transition-colors"
+                              className="text-muted-foreground"
                             >
                               取消
-                            </button>
+                            </Button>
                           </div>
                         ) : (
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="xs"
                             onClick={() => setRetryConfirm(task.task_id)}
                             disabled={retryMut.isPending}
-                            className="rounded px-2 py-1 text-xs text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+                            className="text-emerald-400 hover:text-emerald-400 hover:bg-emerald-500/20"
                             title="重新执行此任务"
                           >
                             重新执行
-                          </button>
+                          </Button>
                         )
                       )}
                       {task.status !== "RUNNING" && (
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="xs"
                           onClick={() => {
                             setDeleteData(false);
                             setDialog({ type: "delete", task });
                           }}
-                          className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-500/20 transition-colors"
+                          className="text-red-400 hover:text-red-400 hover:bg-red-500/20"
                           title="删除任务"
                         >
                           删除
-                        </button>
+                        </Button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
         ) : (
-        <div className="rounded-lg border border-white/10 bg-black/20 p-8 text-center">
-          <p className="text-sm text-white/40">
+        <Card className="p-8 text-center">
+          <p className="text-sm text-muted-foreground">
             {statusFilter === "all" ? "没有符合条件的任务" : `没有"${statusFilter}"状态的任务`}
           </p>
           {statusFilter !== "all" && (
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="sm"
               onClick={() => setStatusFilter("all")}
-              className="mt-2 text-xs text-[#5E6AD2] hover:underline"
+              className="mt-2"
             >
               查看全部任务
-            </button>
+            </Button>
           )}
-        </div>
+        </Card>
         );
       })() : (
-        <div className="rounded-lg border border-white/10 bg-black/20 p-8 text-center">
-          <p className="text-sm text-white/40">今天还没有同步任务</p>
-          <p className="mt-1 text-xs text-white/30">
+        <Card className="p-8 text-center">
+          <p className="text-sm text-muted-foreground">今天还没有同步任务</p>
+          <p className="mt-1 text-xs text-muted-foreground/70">
             可以在"采集监控"中查看调度器状态或手动触发操作
           </p>
-        </div>
+        </Card>
       )}
 
       {tasks && tasks.some((t) => t.error_message) && (
         <div className="space-y-2">
-          <h3 className="text-xs font-medium text-white/60">错误信息</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">错误信息</h3>
           {tasks
             .filter((t) => t.error_message)
             .map((task) => (
               <div
                 key={task.id}
-                className="rounded border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400"
+                className="rounded border border-destructive/20 bg-destructive/10 p-3 text-xs text-red-400"
               >
                 <span className="font-medium">{task.task_name}:</span>{" "}
                 {task.error_message}
@@ -521,17 +552,16 @@ export function SyncTaskLogViewer() {
         confirmLabel="确定删除"
         loading={actionLoading}
         extra={
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="delete-data-check"
               checked={deleteData}
-              onChange={(e) => setDeleteData(e.target.checked)}
-              className="rounded border-white/20 bg-white/10 text-red-500 focus:ring-red-500/50"
+              onCheckedChange={(checked) => setDeleteData(checked === true)}
             />
-            <span className="text-xs text-white/60">
+            <label htmlFor="delete-data-check" className="text-xs text-muted-foreground cursor-pointer">
               同时删除该任务采集的数据
-            </span>
-          </label>
+            </label>
+          </div>
         }
         onConfirm={handleDelete}
         onCancel={() => {
@@ -541,35 +571,39 @@ export function SyncTaskLogViewer() {
       />
 
       {/* ---- 清空采集数据 ---- */}
-      <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 space-y-3">
+      <Card className="border-destructive/20 bg-destructive/5 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xs font-semibold text-red-400">清空采集数据和缓存</h3>
-            <p className="text-[10px] text-white/40 mt-0.5">
+            <p className="text-[10px] text-muted-foreground mt-0.5">
               删除 MongoDB 集合数据、Redis 缓存 key、L1 内存缓存（不可逆）
             </p>
           </div>
           {!purgeOpen ? (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="xs"
               onClick={() => setPurgeOpen(true)}
-              className="shrink-0 px-3 py-1.5 text-xs rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+              className="shrink-0 border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-400"
             >
               清空数据…
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="xs"
               onClick={() => setPurgeOpen(false)}
-              className="shrink-0 px-3 py-1.5 text-xs rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
+              className="shrink-0 text-muted-foreground"
             >
               取消
-            </button>
+            </Button>
           )}
         </div>
 
         {purgeOpen && (
-          <div className="rounded border border-red-500/30 bg-black/30 p-3 space-y-3">
+          <div className="rounded border border-red-500/30 bg-card p-3 space-y-3">
             <p className="text-[10px] text-red-300 font-medium">选择要清空的目标：</p>
             <div className="flex flex-wrap gap-3">
               {[
@@ -579,39 +613,42 @@ export function SyncTaskLogViewer() {
               ].map((t) => (
                 <label
                   key={t.key}
+                  htmlFor={`purge-${t.key}`}
                   className={`flex items-start gap-2 px-3 py-2 rounded border cursor-pointer transition-colors ${
                     purgeTargets.includes(t.key)
                       ? "border-red-500/50 bg-red-500/10"
-                      : "border-white/10 bg-white/5"
+                      : "border-border bg-muted/50"
                   }`}
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
+                    id={`purge-${t.key}`}
                     checked={purgeTargets.includes(t.key)}
-                    onChange={() => togglePurgeTarget(t.key)}
-                    className="mt-0.5 accent-red-500"
+                    onCheckedChange={() => togglePurgeTarget(t.key)}
+                    className="mt-0.5"
                   />
                   <div>
-                    <p className="text-[10px] text-white/80">{t.label}</p>
-                    <p className="text-[10px] text-white/40">{t.desc}</p>
+                    <p className="text-[10px] text-foreground/80">{t.label}</p>
+                    <p className="text-[10px] text-muted-foreground">{t.desc}</p>
                   </div>
                 </label>
               ))}
             </div>
-            <button
+            <Button
               type="button"
+              variant="destructive"
+              size="sm"
               onClick={() => {
                 if (purgeTargets.length === 0) return;
                 purgeMut.mutate(purgeTargets);
               }}
               disabled={purgeMut.isPending || purgeTargets.length === 0}
-              className="px-4 py-1.5 text-xs rounded bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50 transition-colors"
+              className="font-medium"
             >
               {purgeMut.isPending ? "清空中…" : "确认清空"}
-            </button>
+            </Button>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Toast 通过 sonner 全局渲染，无需本地 UI */}
     </section>
