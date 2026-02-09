@@ -24,7 +24,8 @@ DEFAULT_LAYOUT: Dict[str, Any] = {
     "showRankPeriodSelector": True,
 }
 
-CONFIG_DIR = Path(__file__).resolve().parent
+# panel_config.json 在 backend/ 根目录下（与 category.json 同级）
+CONFIG_DIR = Path(__file__).resolve().parent.parent
 PANEL_CONFIG_PATH = CONFIG_DIR / "panel_config.json"
 
 

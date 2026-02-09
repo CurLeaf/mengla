@@ -91,7 +91,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_routes.router,      prefix="/auth",        tags=["认证"])
-api_router.include_router(mengla_routes.router,     prefix="/data/mengla", tags=["MengLa 数据"])
+api_router.include_router(mengla_routes.router,     prefix="/mengla",      tags=["MengLa 数据"])
 api_router.include_router(category_routes.router,   prefix="",             tags=["类目数据"])
 api_router.include_router(webhook_routes.router,    prefix="/webhook",     tags=["Webhook"])
 api_router.include_router(panel_routes.router,      prefix="/panel",       tags=["面板配置"])
