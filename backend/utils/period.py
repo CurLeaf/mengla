@@ -11,7 +11,13 @@ def parse_timest_to_datetime(granularity: str, timest: str) -> datetime:
     将前端传入的 timest 解析为 datetime。
     支持格式：day=YYYYMMDD 或 yyyy-MM-dd；month=YYYYMM 或 yyyy-MM；
     quarter=YYYYQn 或 yyyy-Qn；year=YYYY 或 yyyy。
+
+    当 timest 为空时返回 utcnow()（向后兼容）。
+    当 timest 非空但格式无法识别时记录警告并返回 utcnow()（避免静默掩盖错误）。
     """
+    import logging
+    _logger = logging.getLogger("mengla-backend")
+
     raw = (timest or "").strip()
     if not raw:
         return datetime.utcnow()
@@ -53,6 +59,12 @@ def parse_timest_to_datetime(granularity: str, timest: str) -> datetime:
     # fallback: try YYYYMMDD
     if len(raw) == 8 and raw.isdigit():
         return datetime.strptime(raw, "%Y%m%d")
+
+    # 无法识别的格式 — 记录警告而非静默回退
+    _logger.warning(
+        "parse_timest_to_datetime: 无法识别的时间格式 granularity=%s timest=%r，回退到 utcnow()",
+        granularity, timest,
+    )
     return datetime.utcnow()
 
 
@@ -240,11 +252,15 @@ def period_keys_in_range(granularity: str, start_date: str, end_date: str) -> li
   g = (granularity or "day").lower()
   # 解析为日期
   def parse_d(s: str) -> datetime:
+    import logging
     raw = (s or "").strip()[:10]
     if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
       return datetime.strptime(raw, "%Y-%m-%d")
     if len(raw) == 8 and raw.isdigit():
       return datetime.strptime(raw, "%Y%m%d")
+    logging.getLogger("mengla-backend").warning(
+      "period_keys_in_range.parse_d: 无法识别的日期格式 %r，回退到 utcnow()", s,
+    )
     return datetime.utcnow()
 
   start_d = parse_d(start_date)

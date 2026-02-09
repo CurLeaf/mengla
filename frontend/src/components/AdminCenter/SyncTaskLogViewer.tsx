@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast as sonnerToast } from "sonner";
 import {
   fetchTodaySyncTasks,
   cancelSyncTask,
@@ -11,6 +12,8 @@ import {
   pauseScheduler,
   resumeScheduler,
   cancelAllTasks,
+  runPanelTask,
+  purgeAllData,
 } from "../../services/mengla-admin-api";
 import { StatusBadge } from "./sync-task-log/StatusBadge";
 import { ProgressBar } from "./sync-task-log/ProgressBar";
@@ -88,11 +91,15 @@ export function SyncTaskLogViewer() {
   const [actionLoading, setActionLoading] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
   const [cancelAllConfirm, setCancelAllConfirm] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [retryConfirm, setRetryConfirm] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    if (type === "success") {
+      sonnerToast.success(message);
+    } else {
+      sonnerToast.error(message);
+    }
   }, []);
 
   // 调度器状态
@@ -132,6 +139,32 @@ export function SyncTaskLogViewer() {
     },
     onError: (e) => showToast(e instanceof Error ? e.message : "取消失败", "error"),
   });
+
+  const retryMut = useMutation({
+    mutationFn: (taskId: string) => runPanelTask(taskId),
+    onSuccess: (_data, taskId) => {
+      queryClient.invalidateQueries({ queryKey: ["sync-tasks-today"] });
+      showToast(`任务 ${taskId} 已重新启动`, "success");
+    },
+    onError: (e) => showToast(e instanceof Error ? e.message : "重新执行失败", "error"),
+  });
+
+  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [purgeTargets, setPurgeTargets] = useState<string[]>(["mongodb", "redis", "l1"]);
+  const purgeMut = useMutation({
+    mutationFn: (targets: string[]) => purgeAllData(targets),
+    onSuccess: (data) => {
+      setPurgeOpen(false);
+      queryClient.invalidateQueries();
+      showToast(`清空完成: ${JSON.stringify(data.results)}`, "success");
+    },
+    onError: (e) => showToast(e instanceof Error ? e.message : "清空失败", "error"),
+  });
+  const togglePurgeTarget = (target: string) => {
+    setPurgeTargets((prev) =>
+      prev.includes(target) ? prev.filter((t) => t !== target) : [...prev, target],
+    );
+  };
 
   const handleCancel = useCallback(async () => {
     if (dialog.type !== "cancel") return;
@@ -191,16 +224,30 @@ export function SyncTaskLogViewer() {
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-sm font-semibold text-white">同步日志</h2>
           <p className="mt-1 text-xs text-white/60">
             查看当天的数据采集任务执行状态。
           </p>
         </div>
-        <span className="text-xs text-white/40">
-          上次更新: {lastUpdated}
-        </span>
+        <div className="flex items-center gap-3">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-[#0F0F12] border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50"
+            aria-label="按状态筛选"
+          >
+            <option value="all">全部状态</option>
+            <option value="RUNNING">运行中</option>
+            <option value="COMPLETED">已完成</option>
+            <option value="FAILED">失败</option>
+            <option value="CANCELLED">已取消</option>
+          </select>
+          <span className="text-xs text-white/40">
+            更新: {lastUpdated}
+          </span>
+        </div>
       </div>
 
       {/* ---- 调度器控制栏 ---- */}
@@ -247,6 +294,13 @@ export function SyncTaskLogViewer() {
           )}
         </div>
 
+        {/* 中：提示 */}
+        {schedulerStatus?.state === "paused" && (
+          <span className="text-[10px] text-amber-400/80">
+            已暂停：不会触发新的定时任务，已在运行的任务不受影响
+          </span>
+        )}
+
         {/* 右：操作按钮 */}
         <div className="flex items-center gap-2">
           {schedulerStatus?.state === "paused" ? (
@@ -255,6 +309,7 @@ export function SyncTaskLogViewer() {
               onClick={() => resumeMut.mutate()}
               disabled={resumeMut.isPending}
               className="px-3 py-1.5 text-xs rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+              title="恢复定时任务调度（每日采集、补数检查等将恢复自动触发）"
             >
               {resumeMut.isPending ? "恢复中…" : "恢复调度"}
             </button>
@@ -264,6 +319,7 @@ export function SyncTaskLogViewer() {
               onClick={() => pauseMut.mutate()}
               disabled={pauseMut.isPending || schedulerStatus?.state === "stopped"}
               className="px-3 py-1.5 text-xs rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+              title="暂停定时任务调度（阻止新定时任务触发，不影响正在运行的任务）"
             >
               {pauseMut.isPending ? "暂停中…" : "暂停调度"}
             </button>
@@ -275,6 +331,7 @@ export function SyncTaskLogViewer() {
               onClick={() => setCancelAllConfirm(true)}
               disabled={cancelAllMut.isPending}
               className="px-3 py-1.5 text-xs rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+              title="立即终止所有正在运行的后台采集任务"
             >
               取消全部任务
             </button>
@@ -304,9 +361,13 @@ export function SyncTaskLogViewer() {
         </div>
       </div>
 
-      {tasks && tasks.length > 0 ? (
+      {tasks && tasks.length > 0 ? (() => {
+        const filteredTasks = statusFilter === "all"
+          ? tasks
+          : tasks.filter((t) => t.status === statusFilter);
+        return filteredTasks.length > 0 ? (
         <div className="rounded-lg border border-white/10 bg-black/20 overflow-hidden">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left text-xs" role="table" aria-label="同步任务列表">
             <thead>
               <tr className="border-b border-white/10 text-white/60">
                 <th className="px-4 py-2.5 font-medium">任务名称</th>
@@ -319,7 +380,7 @@ export function SyncTaskLogViewer() {
               </tr>
             </thead>
             <tbody>
-              {tasks.map((task) => (
+              {filteredTasks.map((task) => (
                 <tr
                   key={task.id}
                   className="border-b border-white/5 hover:bg-white/5"
@@ -351,6 +412,34 @@ export function SyncTaskLogViewer() {
                           取消
                         </button>
                       )}
+                      {(task.status === "FAILED" || task.status === "CANCELLED") && (
+                        retryConfirm === task.task_id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => { retryMut.mutate(task.task_id); setRetryConfirm(null); }}
+                              disabled={retryMut.isPending}
+                              className="rounded px-2 py-1 text-xs bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 transition-colors"
+                            >
+                              {retryMut.isPending ? "启动中…" : "确认"}
+                            </button>
+                            <button
+                              onClick={() => setRetryConfirm(null)}
+                              className="rounded px-2 py-1 text-xs text-white/50 hover:bg-white/5 transition-colors"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setRetryConfirm(task.task_id)}
+                            disabled={retryMut.isPending}
+                            className="rounded px-2 py-1 text-xs text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+                            title="重新执行此任务"
+                          >
+                            重新执行
+                          </button>
+                        )
+                      )}
                       {task.status !== "RUNNING" && (
                         <button
                           onClick={() => {
@@ -370,7 +459,23 @@ export function SyncTaskLogViewer() {
             </tbody>
           </table>
         </div>
-      ) : (
+        ) : (
+        <div className="rounded-lg border border-white/10 bg-black/20 p-8 text-center">
+          <p className="text-sm text-white/40">
+            {statusFilter === "all" ? "没有符合条件的任务" : `没有"${statusFilter}"状态的任务`}
+          </p>
+          {statusFilter !== "all" && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter("all")}
+              className="mt-2 text-xs text-[#5E6AD2] hover:underline"
+            >
+              查看全部任务
+            </button>
+          )}
+        </div>
+        );
+      })() : (
         <div className="rounded-lg border border-white/10 bg-black/20 p-8 text-center">
           <p className="text-sm text-white/40">今天还没有同步任务</p>
           <p className="mt-1 text-xs text-white/30">
@@ -435,18 +540,80 @@ export function SyncTaskLogViewer() {
         }}
       />
 
-      {/* Toast 提示 */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-2.5 text-xs font-medium shadow-lg transition-all ${
-            toast.type === "success"
-              ? "bg-green-600 text-white"
-              : "bg-red-600 text-white"
-          }`}
-        >
-          {toast.message}
+      {/* ---- 清空采集数据 ---- */}
+      <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xs font-semibold text-red-400">清空采集数据和缓存</h3>
+            <p className="text-[10px] text-white/40 mt-0.5">
+              删除 MongoDB 集合数据、Redis 缓存 key、L1 内存缓存（不可逆）
+            </p>
+          </div>
+          {!purgeOpen ? (
+            <button
+              type="button"
+              onClick={() => setPurgeOpen(true)}
+              className="shrink-0 px-3 py-1.5 text-xs rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              清空数据…
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPurgeOpen(false)}
+              className="shrink-0 px-3 py-1.5 text-xs rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
+            >
+              取消
+            </button>
+          )}
         </div>
-      )}
+
+        {purgeOpen && (
+          <div className="rounded border border-red-500/30 bg-black/30 p-3 space-y-3">
+            <p className="text-[10px] text-red-300 font-medium">选择要清空的目标：</p>
+            <div className="flex flex-wrap gap-3">
+              {[
+                { key: "mongodb", label: "MongoDB 数据", desc: "mengla_data, crawl_jobs, crawl_subtasks, sync_task_logs" },
+                { key: "redis", label: "Redis 缓存", desc: "所有 mengla:* 前缀的 key" },
+                { key: "l1", label: "L1 内存缓存", desc: "进程内 LRU 缓存" },
+              ].map((t) => (
+                <label
+                  key={t.key}
+                  className={`flex items-start gap-2 px-3 py-2 rounded border cursor-pointer transition-colors ${
+                    purgeTargets.includes(t.key)
+                      ? "border-red-500/50 bg-red-500/10"
+                      : "border-white/10 bg-white/5"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={purgeTargets.includes(t.key)}
+                    onChange={() => togglePurgeTarget(t.key)}
+                    className="mt-0.5 accent-red-500"
+                  />
+                  <div>
+                    <p className="text-[10px] text-white/80">{t.label}</p>
+                    <p className="text-[10px] text-white/40">{t.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (purgeTargets.length === 0) return;
+                purgeMut.mutate(purgeTargets);
+              }}
+              disabled={purgeMut.isPending || purgeTargets.length === 0}
+              className="px-4 py-1.5 text-xs rounded bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50 transition-colors"
+            >
+              {purgeMut.isPending ? "清空中…" : "确认清空"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Toast 通过 sonner 全局渲染，无需本地 UI */}
     </section>
   );
 }

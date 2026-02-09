@@ -154,7 +154,7 @@ CIRCUIT_BREAKER_CONFIG = {
 # ==============================================================================
 CONCURRENT_CONFIG = {
     "max_concurrent": _safe_int("MAX_CONCURRENT_TASKS", 5),
-    "max_inflight": _safe_int("MAX_INFLIGHT_REQUESTS", 3),  # 同时等待外部采集系统响应的最大请求数
+    "max_inflight": _safe_int("MAX_INFLIGHT_REQUESTS", 1),  # 外部采集系统是串行的，默认 1 个
     "task_timeout": _safe_int("TASK_TIMEOUT", 300),  # 5分钟
     "batch_size": _safe_int("BATCH_SIZE", 10),
 }

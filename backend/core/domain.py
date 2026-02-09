@@ -726,6 +726,7 @@ async def _fetch_mengla_data(
 
     # 使用 in-flight 表防止同参并发多次打采集（加锁保护）
     request_key = f"{action}:{cat_id}:{granularity}:{period_key or ''}"
+    is_owner = False
 
     async with _in_flight_lock:
         existing_task = IN_FLIGHT.get(request_key)
@@ -733,22 +734,19 @@ async def _fetch_mengla_data(
             # 已有同参请求在飞行中，等待其结果
             task_to_await = existing_task
         else:
-            task_to_await = None
+            # 原子性：在同一把锁内检查并注册，防止并发都通过检查
+            task_to_await = asyncio.get_running_loop().create_task(_fetch_and_persist())
+            IN_FLIGHT[request_key] = task_to_await
+            is_owner = True
 
-    if task_to_await is not None:
-        return await task_to_await
-
-    loop = asyncio.get_running_loop()
-    task: asyncio.Future = loop.create_task(_fetch_and_persist())
-    async with _in_flight_lock:
-        IN_FLIGHT[request_key] = task
     try:
-        return await task
+        return await task_to_await
     finally:
-        async with _in_flight_lock:
-            # 仅创建该 task 的请求负责清理
-            if IN_FLIGHT.get(request_key) is task:
-                IN_FLIGHT.pop(request_key, None)
+        if is_owner:
+            async with _in_flight_lock:
+                # 仅创建该 task 的请求负责清理
+                if IN_FLIGHT.get(request_key) is task_to_await:
+                    IN_FLIGHT.pop(request_key, None)
 
 
 # ==============================================================================

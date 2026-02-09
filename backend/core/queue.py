@@ -102,12 +102,25 @@ async def create_crawl_job(
 
 
 async def get_next_job() -> Optional[Dict[str, Any]]:
-    """Find one RUNNING or PENDING job (oldest first)."""
+    """
+    原子认领一个 PENDING 任务并标记为 RUNNING，或找到已经在 RUNNING 的任务。
+    使用 find_one_and_update 避免多个 worker 同时认领同一个 PENDING 任务。
+    """
     if mongo_db is None:
         return None
-    job = await mongo_db[CRAWL_JOBS].find_one(
-        {"status": {"$in": [JOB_RUNNING, JOB_PENDING]}},
+    # 优先处理已在运行中的任务（恢复场景）
+    running = await mongo_db[CRAWL_JOBS].find_one(
+        {"status": JOB_RUNNING},
         sort=[("created_at", 1)],
+    )
+    if running:
+        return running
+    # 原子认领一个 PENDING 任务
+    job = await mongo_db[CRAWL_JOBS].find_one_and_update(
+        {"status": JOB_PENDING},
+        {"$set": {"status": JOB_RUNNING, "updated_at": datetime.utcnow()}},
+        sort=[("created_at", 1)],
+        return_document=ReturnDocument.AFTER,
     )
     return job
 
@@ -232,6 +245,8 @@ async def inc_job_stats(job_id: Any, completed_delta: int = 0, failed_delta: int
 async def finish_job_if_done(job_id: Any) -> None:
     """
     If no subtasks are PENDING or RUNNING, set job to COMPLETED or FAILED.
+    使用 find_one_and_update 确保只有仍在 RUNNING 状态的 job 才会被更新，
+    避免并发完成导致的状态覆盖。
     """
     if mongo_db is None:
         return
@@ -244,7 +259,8 @@ async def finish_job_if_done(job_id: Any) -> None:
         {"job_id": job_id, "status": SUB_FAILED},
     )
     new_status = JOB_FAILED if failed > 0 else JOB_COMPLETED
-    await mongo_db[CRAWL_JOBS].update_one(
-        {"_id": job_id},
+    # 原子更新：仅当 job 仍为 RUNNING 时才更新状态，防止并发覆盖
+    await mongo_db[CRAWL_JOBS].find_one_and_update(
+        {"_id": job_id, "status": JOB_RUNNING},
         {"$set": {"status": new_status, "updated_at": datetime.utcnow()}},
     )

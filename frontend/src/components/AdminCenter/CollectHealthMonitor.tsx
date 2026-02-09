@@ -1,10 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import {
   fetchCollectHealth,
-  cancelAllTasks,
-  purgeAllData,
   type CollectHealthResponse,
   type ActionStat,
   type EmptyStreak,
@@ -414,177 +410,6 @@ function RequestPressurePanel({ pressure }: { pressure: RequestPressure }) {
   );
 }
 
-/* ========== 危险操作面板 ========== */
-function DangerZone() {
-  const queryClient = useQueryClient();
-  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
-  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
-  const [purgeTargets, setPurgeTargets] = useState<string[]>(["mongodb", "redis", "l1"]);
-
-  const cancelMut = useMutation({
-    mutationFn: cancelAllTasks,
-    onSuccess: (data) => {
-      setCancelConfirmOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["scheduler-status"] });
-      toast.success("已取消任务", {
-        description: `异步任务: ${data.cancelled_asyncio_tasks}, 同步日志: ${data.cancelled_sync_logs}, 爬虫任务: ${data.cancelled_crawl_jobs}, 子任务: ${data.cancelled_crawl_subtasks}`,
-      });
-    },
-  });
-
-  const purgeMut = useMutation({
-    mutationFn: (targets: string[]) => purgeAllData(targets),
-    onSuccess: (data) => {
-      setPurgeConfirmOpen(false);
-      queryClient.invalidateQueries();
-      toast.success("清空完成", {
-        description: JSON.stringify(data.results, null, 2),
-      });
-    },
-  });
-
-  const toggleTarget = (target: string) => {
-    setPurgeTargets((prev) =>
-      prev.includes(target) ? prev.filter((t) => t !== target) : [...prev, target]
-    );
-  };
-
-  return (
-    <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 space-y-4">
-      <div>
-        <h3 className="text-xs font-semibold text-red-400">危险操作</h3>
-        <p className="text-[10px] text-white/40 mt-1">以下操作不可逆，请谨慎执行。</p>
-      </div>
-
-      {/* 取消所有任务 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs text-white/80">取消所有运行中的任务</p>
-          <p className="text-[10px] text-white/40">
-            终止后台 asyncio 任务，标记 MongoDB 中运行中的同步日志和爬虫任务为失败/取消
-          </p>
-        </div>
-        {!cancelConfirmOpen ? (
-          <button
-            type="button"
-            onClick={() => setCancelConfirmOpen(true)}
-            disabled={cancelMut.isPending}
-            className="shrink-0 px-3 py-1.5 text-[10px] rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
-            aria-label="取消所有任务"
-          >
-            {cancelMut.isPending ? "取消中…" : "取消全部"}
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-red-300">确定取消全部？</span>
-            <button
-              type="button"
-              onClick={() => cancelMut.mutate()}
-              disabled={cancelMut.isPending}
-              className="px-3 py-1 text-[10px] rounded bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50 transition-colors"
-            >
-              {cancelMut.isPending ? "取消中…" : "确认"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setCancelConfirmOpen(false)}
-              className="px-3 py-1 text-[10px] rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
-            >
-              取消
-            </button>
-          </div>
-        )}
-      </div>
-
-      {cancelMut.isError && (
-        <p className="text-[10px] text-red-400">{String(cancelMut.error)}</p>
-      )}
-
-      <hr className="border-white/10" />
-
-      {/* 清空数据 */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-white/80">清空采集数据和缓存</p>
-            <p className="text-[10px] text-white/40">
-              删除 MongoDB 集合数据、Redis 缓存 key、L1 内存缓存
-            </p>
-          </div>
-          {!purgeConfirmOpen ? (
-            <button
-              type="button"
-              onClick={() => setPurgeConfirmOpen(true)}
-              className="shrink-0 px-3 py-1.5 text-[10px] rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-            >
-              清空数据…
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setPurgeConfirmOpen(false)}
-              className="shrink-0 px-3 py-1.5 text-[10px] rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
-            >
-              取消
-            </button>
-          )}
-        </div>
-
-        {purgeConfirmOpen && (
-          <div className="rounded border border-red-500/30 bg-black/30 p-3 space-y-3">
-            <p className="text-[10px] text-red-300 font-medium">选择要清空的目标：</p>
-            <div className="flex flex-wrap gap-3">
-              {[
-                { key: "mongodb", label: "MongoDB 数据", desc: "mengla_data, crawl_jobs, crawl_subtasks, sync_task_logs" },
-                { key: "redis", label: "Redis 缓存", desc: "所有 mengla:* 前缀的 key" },
-                { key: "l1", label: "L1 内存缓存", desc: "进程内 LRU 缓存" },
-              ].map((t) => (
-                <label
-                  key={t.key}
-                  className={`flex items-start gap-2 px-3 py-2 rounded border cursor-pointer transition-colors ${
-                    purgeTargets.includes(t.key)
-                      ? "border-red-500/50 bg-red-500/10"
-                      : "border-white/10 bg-white/5"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={purgeTargets.includes(t.key)}
-                    onChange={() => toggleTarget(t.key)}
-                    className="mt-0.5 accent-red-500"
-                  />
-                  <div>
-                    <p className="text-[10px] text-white/80">{t.label}</p>
-                    <p className="text-[10px] text-white/40">{t.desc}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (purgeTargets.length === 0) {
-                  toast.warning("请至少选择一个清空目标");
-                  return;
-                }
-                purgeMut.mutate(purgeTargets);
-              }}
-              disabled={purgeMut.isPending}
-              className="px-4 py-1.5 text-[10px] rounded bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50 transition-colors"
-              aria-label="确认清空数据"
-            >
-              {purgeMut.isPending ? "清空中…" : "确认清空"}
-            </button>
-            {purgeMut.isError && (
-              <p className="text-[10px] text-red-400">{String(purgeMut.error)}</p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ---------- 主组件 ---------- */
 
 export function CollectHealthMonitor() {
@@ -609,11 +434,31 @@ export function CollectHealthMonitor() {
     load();
   }, [load]);
 
-  // 自动刷新（15s）
+  // 自动刷新（15s），标签页不可见时暂停
   useEffect(() => {
     if (!autoRefresh) return;
-    const timer = setInterval(load, 15000);
-    return () => clearInterval(timer);
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const startTimer = () => {
+      if (timer) clearInterval(timer);
+      timer = setInterval(load, 15000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (timer) { clearInterval(timer); timer = null; }
+      } else {
+        load(); // 恢复时立即刷新一次
+        startTimer();
+      }
+    };
+
+    startTimer();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      if (timer) clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [autoRefresh, load]);
 
   if (loading && !data) {
@@ -754,9 +599,6 @@ export function CollectHealthMonitor() {
 
       {/* 基础设施状态 */}
       <InfraStatus mongo={data.mongo_status} redis={data.redis_status} />
-
-      {/* 危险操作 */}
-      <DangerZone />
     </div>
   );
 }

@@ -95,9 +95,14 @@ export default function DashboardPage() {
       {/* 趋势 section */}
       <section className="space-y-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-mono tracking-[0.2em] text-white/50 uppercase">TREND</p>
-            <h2 className="mt-1 text-sm font-semibold text-white">行业趋势</h2>
+          <div className="flex items-center gap-2">
+            <div>
+              <p className="text-xs font-mono tracking-[0.2em] text-white/50 uppercase">TREND</p>
+              <h2 className="mt-1 text-sm font-semibold text-white">行业趋势</h2>
+            </div>
+            {trendQuery.isFetching && !trendQuery.isLoading && (
+              <span className="inline-block w-3 h-3 border border-white/20 border-t-[#5E6AD2] rounded-full animate-spin" title="更新中" />
+            )}
           </div>
           <TrendPeriodRangeSelector
             period={trendPeriod}

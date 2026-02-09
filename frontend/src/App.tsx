@@ -8,6 +8,13 @@ import { useCategoryState } from "./hooks/useCategoryState";
 import { ADMIN_SECTIONS } from "./components/AdminCenter/AdminCenterLayout";
 import type { Category, CategoryChild } from "./types/category";
 
+/* ---------- 采集模式说明 ---------- */
+const COLLECT_MODE_TIPS: Record<string, string> = {
+  current: "当前视图 — 仅采集当前页面展示所需的数据",
+  fill: "补齐 — 扫描所有缺失数据并自动补齐，已有缓存的会跳过",
+  force: "全部 — 强制刷新所有数据，跳过缓存直接从数据源采集",
+};
+
 /* ---------- 常量 ---------- */
 const MODES = [
   { key: "overview", path: "/", name: "行业总览", badge: "OVERVIEW" },
@@ -65,6 +72,7 @@ export default function App() {
   const [fetchTrigger, setFetchTrigger] = useState(0);
   const [triggerLoading, setTriggerLoading] = useState(false);
   const [collectMode, setCollectMode] = useState<"current" | "fill" | "force">("current");
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const queryClient = useQueryClient();
 
   // 切换页面时重置触发器，页面不会自动发起请求
@@ -132,7 +140,8 @@ export default function App() {
                     onChange={(e) => setCollectMode(e.target.value as "current" | "fill" | "force")}
                     disabled={triggerLoading}
                     className="px-1.5 py-1 text-[10px] bg-[#0F0F12] border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 focus:outline-none"
-                    title="选择采集范围"
+                    title={COLLECT_MODE_TIPS[collectMode]}
+                    aria-label="选择采集范围"
                   >
                     <option value="current">当前</option>
                     <option value="fill">补齐</option>
@@ -142,16 +151,14 @@ export default function App() {
                     type="button"
                     onClick={() => triggerManualCollect()}
                     disabled={triggerLoading}
-                    className="px-2 py-1 text-[10px] bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    className="px-2 py-1 text-[10px] bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 border border-[#5E6AD2]/40 rounded text-[#5E6AD2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1"
                     aria-label="开始采集数据"
-                    title={
-                      collectMode === "force"
-                        ? "强制刷新所有数据（跳过缓存）"
-                        : collectMode === "fill"
-                          ? "只采集缺失的数据"
-                          : "采集当前视图数据"
-                    }
+                    aria-busy={triggerLoading}
+                    title={COLLECT_MODE_TIPS[collectMode]}
                   >
+                    {triggerLoading && (
+                      <span className="inline-block w-3 h-3 border border-[#5E6AD2] border-t-transparent rounded-full animate-spin" />
+                    )}
                     {triggerLoading ? "采集中..." : "采集"}
                   </button>
                 </div>
@@ -201,25 +208,29 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
               </button>
-              {adminExpanded && (
-                <div>
-                  {ADMIN_SECTIONS.map(({ id, path, label }) => (
-                    <NavLink
-                      key={id}
-                      to={path}
-                      className={({ isActive }: { isActive: boolean }) =>
-                        `w-full flex items-center px-5 pl-8 py-2 text-xs transition-colors ${
-                          isActive
-                            ? "bg-white/10 text-white"
-                            : "text-white/55 hover:bg-white/5 hover:text-white/75"
-                        }`
-                      }
-                    >
-                      {label}
-                    </NavLink>
-                  ))}
-                </div>
-              )}
+              <div
+                className="overflow-hidden transition-all duration-200 ease-in-out"
+                style={{
+                  maxHeight: adminExpanded ? `${ADMIN_SECTIONS.length * 36}px` : "0px",
+                  opacity: adminExpanded ? 1 : 0,
+                }}
+              >
+                {ADMIN_SECTIONS.map(({ id, path, label }) => (
+                  <NavLink
+                    key={id}
+                    to={path}
+                    className={({ isActive }: { isActive: boolean }) =>
+                      `w-full flex items-center px-5 pl-8 py-2 text-xs transition-colors ${
+                        isActive
+                          ? "bg-white/10 text-white"
+                          : "text-white/55 hover:bg-white/5 hover:text-white/75"
+                      }`
+                    }
+                  >
+                    {label}
+                  </NavLink>
+                ))}
+              </div>
             </div>
             <NavLink
               to="/token"
@@ -235,14 +246,34 @@ export default function App() {
           </nav>
           {/* 登出 */}
           <div className="border-t border-white/10 px-5 py-3">
-            <button
-              type="button"
-              onClick={() => logout()}
-              className="w-full text-left text-xs text-white/45 hover:text-white/70 transition-colors"
-              aria-label="退出登录"
-            >
-              退出登录
-            </button>
+            {!showLogoutConfirm ? (
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(true)}
+                className="w-full text-left text-xs text-white/45 hover:text-white/70 transition-colors"
+                aria-label="退出登录"
+              >
+                退出登录
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/60">确认退出？</span>
+                <button
+                  type="button"
+                  onClick={() => { setShowLogoutConfirm(false); logout(); }}
+                  className="px-2 py-1 text-[11px] rounded bg-red-600 hover:bg-red-700 text-white transition-colors"
+                >
+                  确认
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="px-2 py-1 text-[11px] rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            )}
           </div>
         </aside>
 
@@ -296,6 +327,7 @@ export default function App() {
                     onClick={() => {
                       setFetchTrigger((prev) => prev + 1);
                       queryClient.invalidateQueries({ queryKey: ["mengla"] });
+                      toast.success("已刷新", { description: "数据正在重新加载" });
                     }}
                     aria-label="刷新数据"
                   >

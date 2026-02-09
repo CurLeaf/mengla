@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { fetchPanelConfig, updatePanelConfig } from "../../services/panel-config-api";
 import type { PanelModuleConfig } from "../../types/panel-config";
 
@@ -24,6 +25,10 @@ export function ModuleManager() {
       updatePanelConfig({ modules }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["panel-config"] });
+      toast.success("模块配置已保存");
+    },
+    onError: (e) => {
+      toast.error("保存失败", { description: e instanceof Error ? e.message : String(e) });
     },
   });
 
@@ -131,10 +136,10 @@ export function ModuleManager() {
         </table>
       </div>
       {saveMutation.isPending && (
-        <p className="text-xs text-white/50">保存中…</p>
-      )}
-      {saveMutation.isError && (
-        <p className="text-xs text-red-400">{String(saveMutation.error)}</p>
+        <div className="flex items-center gap-2 text-xs text-white/50">
+          <span className="inline-block w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
+          保存中…
+        </div>
       )}
     </section>
   );

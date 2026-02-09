@@ -19,7 +19,7 @@ async def get_categories():
     返回类目树，数据来源于 backend/category.json。
     为避免频繁读大文件，使用简单内存缓存。
     """
-    return get_all_categories()
+    return {"ok": True, "data": get_all_categories()}
 
 
 @router.get("/industry/daily", dependencies=[Depends(require_auth)])

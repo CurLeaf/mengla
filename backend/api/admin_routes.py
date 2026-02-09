@@ -58,6 +58,13 @@ class SilenceRuleRequest(BaseModel):
     rule_name: str
     duration_minutes: int = 60
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.duration_minutes < 1:
+            raise ValueError("duration_minutes 必须大于 0")
+        if self.duration_minutes > 43200:  # 最多 30 天
+            raise ValueError("duration_minutes 不能超过 43200（30天）")
+
 
 class CacheWarmupRequest(BaseModel):
     actions: Optional[List[str]] = None
@@ -65,10 +72,29 @@ class CacheWarmupRequest(BaseModel):
     granularities: Optional[List[str]] = None
     limit: int = 100
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.limit < 1:
+            raise ValueError("limit 必须大于 0")
+        if self.limit > 10000:
+            raise ValueError("limit 不能超过 10000")
+
+
+class CancelAllRequest(BaseModel):
+    """取消所有后台任务需要确认"""
+    confirm: bool = False
+
 
 class PurgeRequest(BaseModel):
     confirm: bool = False
     targets: List[str] = ["mongodb", "redis", "l1"]
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        valid_targets = {"mongodb", "redis", "l1"}
+        invalid = [t for t in self.targets if t not in valid_targets]
+        if invalid:
+            raise ValueError(f"无效的清空目标: {invalid}，只允许 mongodb/redis/l1")
 
 
 # ---------------------------------------------------------------------------
@@ -393,8 +419,10 @@ async def scheduler_resume():
 # 后台任务控制
 # ---------------------------------------------------------------------------
 @router.post("/tasks/cancel-all", dependencies=[Depends(require_admin)])
-async def cancel_all_background_tasks():
-    """取消所有运行中的后台采集任务。"""
+async def cancel_all_background_tasks(body: Optional[CancelAllRequest] = None):
+    """取消所有运行中的后台采集任务。需要 confirm=true 确认。"""
+    if not (body and body.confirm):
+        raise HTTPException(status_code=400, detail="此操作将取消所有后台任务，请传入 confirm=true 确认")
     from ..utils.tasks import _background_tasks
     # 1) 取消 asyncio 后台任务
     cancelled_count = 0

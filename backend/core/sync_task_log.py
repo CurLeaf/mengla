@@ -4,11 +4,13 @@ Sync Task Log: 记录同步任务的执行状态和进度。
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
 from bson import ObjectId
+from pymongo import ReturnDocument
 
 from ..infra import database
 
@@ -31,20 +33,27 @@ TRIGGER_SCHEDULED = "scheduled"
 # 协作式取消机制
 # 运行中的任务会在每次循环迭代时检查此集合，如果发现自己的 log_id 在其中，
 # 则主动停止执行。
+# 使用 asyncio.Lock 保护并发访问。
 # ---------------------------------------------------------------------------
 _cancelled_logs: Set[str] = set()
+_cancelled_lock = asyncio.Lock()
 
 
 def is_cancelled(log_id: Optional[str]) -> bool:
-    """检查指定的任务日志是否已被取消。"""
+    """
+    检查指定的任务日志是否已被取消。
+    注意：在 asyncio 单线程模型中，set 的 `in` 操作是原子的，
+    因此同步读取不会出现数据损坏。写操作使用锁保护。
+    """
     if not log_id:
         return False
     return log_id in _cancelled_logs
 
 
-def _mark_cancelled(log_id: str) -> None:
-    """将 log_id 加入取消集合。"""
-    _cancelled_logs.add(log_id)
+async def _mark_cancelled(log_id: str) -> None:
+    """将 log_id 加入取消集合（加锁保护写操作）。"""
+    async with _cancelled_lock:
+        _cancelled_logs.add(log_id)
 
 
 def _unmark_cancelled(log_id: str) -> None:
@@ -129,7 +138,10 @@ async def update_sync_task_progress(
         if failed_delta:
             update["$inc"]["progress.failed"] = failed_delta
     
-    await database.mongo_db[SYNC_TASK_LOGS].update_one({"_id": oid}, update)
+    # 仅当任务仍在 RUNNING 状态时才更新进度，避免任务已结束后仍被更新
+    await database.mongo_db[SYNC_TASK_LOGS].update_one(
+        {"_id": oid, "status": STATUS_RUNNING}, update
+    )
 
 
 async def finish_sync_task_log(
@@ -260,8 +272,9 @@ async def cancel_sync_task(log_id: str) -> Dict[str, Any]:
     """
     取消一个运行中的同步任务。
     
-    1. 将 log_id 加入协作取消集合（运行中的任务会在下次迭代时自行停止）
-    2. 在数据库中将状态标记为 CANCELLED
+    使用 find_one_and_update 原子操作，仅当任务仍为 RUNNING 时才更新。
+    1. 原子更新数据库状态
+    2. 将 log_id 加入协作取消集合（运行中的任务会在下次迭代时自行停止）
     
     Args:
         log_id: 日志记录 ID
@@ -277,30 +290,30 @@ async def cancel_sync_task(log_id: str) -> Dict[str, Any]:
     except Exception:
         return {"success": False, "message": f"无效的 log_id: {log_id}"}
 
-    # 检查任务是否存在且正在运行
-    task = await database.mongo_db[SYNC_TASK_LOGS].find_one({"_id": oid})
-    if task is None:
-        return {"success": False, "message": "任务不存在"}
-
-    if task["status"] != STATUS_RUNNING:
-        return {"success": False, "message": f"任务不在运行中（当前状态: {task['status']}）"}
-
-    # 1. 通知协作取消机制
-    _mark_cancelled(log_id)
-
-    # 2. 更新数据库状态
+    # 原子操作：仅当状态为 RUNNING 时更新为 CANCELLED，避免并发竞态
     now = datetime.utcnow()
-    await database.mongo_db[SYNC_TASK_LOGS].update_one(
-        {"_id": oid},
+    result = await database.mongo_db[SYNC_TASK_LOGS].find_one_and_update(
+        {"_id": oid, "status": STATUS_RUNNING},
         {"$set": {
             "status": STATUS_CANCELLED,
             "error_message": "用户手动取消",
             "finished_at": now,
             "updated_at": now,
         }},
+        return_document=ReturnDocument.BEFORE,
     )
 
-    logger.info("Sync task cancelled: log_id=%s task_id=%s", log_id, task.get("task_id"))
+    if result is None:
+        # 可能是任务不存在，或者已经不在 RUNNING 状态
+        task = await database.mongo_db[SYNC_TASK_LOGS].find_one({"_id": oid})
+        if task is None:
+            return {"success": False, "message": "任务不存在"}
+        return {"success": False, "message": f"任务不在运行中（当前状态: {task['status']}）"}
+
+    # 通知协作取消机制
+    await _mark_cancelled(log_id)
+
+    logger.info("Sync task cancelled: log_id=%s task_id=%s", log_id, result.get("task_id"))
     return {"success": True, "message": "任务已取消"}
 
 
@@ -343,9 +356,10 @@ async def delete_sync_task(log_id: str, delete_data: bool = False) -> Dict[str, 
         from ..utils.config import COLLECTION_NAME
 
         started_at = task.get("started_at")
-        finished_at = task.get("finished_at") or task.get("updated_at")
+        # 优先使用 finished_at，其次 updated_at，都为 None 则使用当前时间
+        finished_at = task.get("finished_at") or task.get("updated_at") or datetime.utcnow()
 
-        if started_at and finished_at:
+        if started_at:
             data_filter = {
                 "updated_at": {
                     "$gte": started_at,
@@ -357,6 +371,10 @@ async def delete_sync_task(log_id: str, delete_data: bool = False) -> Dict[str, 
             logger.info(
                 "Deleted %d data records for sync task %s (time range: %s ~ %s)",
                 deleted_data_count, log_id, started_at, finished_at,
+            )
+        else:
+            logger.warning(
+                "Cannot delete data for sync task %s: started_at is None", log_id,
             )
 
     # 删除日志记录本身

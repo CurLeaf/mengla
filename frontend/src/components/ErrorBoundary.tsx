@@ -30,15 +30,25 @@ export class ErrorBoundary extends React.Component<
             <p className="text-white/50 mb-6 max-w-md text-center text-sm">
               {this.state.error?.message}
             </p>
-            <button
-              className="px-5 py-2.5 bg-[#5E6AD2] hover:bg-[#6E7AE2] text-white text-sm font-medium rounded-lg transition-colors"
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.reload();
-              }}
-            >
-              刷新页面
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                className="px-5 py-2.5 bg-[#5E6AD2] hover:bg-[#6E7AE2] text-white text-sm font-medium rounded-lg transition-colors"
+                onClick={() => {
+                  this.setState({ hasError: false, error: null });
+                }}
+              >
+                重试
+              </button>
+              <button
+                className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white/70 text-sm font-medium rounded-lg transition-colors border border-white/10"
+                onClick={() => {
+                  this.setState({ hasError: false, error: null });
+                  window.location.reload();
+                }}
+              >
+                刷新页面
+              </button>
+            </div>
           </div>
         )
       );

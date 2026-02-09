@@ -150,7 +150,8 @@ async def run_period_collect(
     task_id = f"{granularity}_collect"
     task_name = _GRANULARITY_TASK_NAMES.get(granularity, f"{granularity} 采集")
 
-    # 重叠防护：检查是否有同类型任务正在运行
+    # 重叠防护：原子检查并创建，防止并发启动同一任务
+    # 先检查是否有同类型任务正在运行
     existing = await get_running_task_by_task_id(task_id)
     if existing:
         logger.warning("Task %s already running (log_id=%s), skip", task_id, existing["id"])
@@ -162,6 +163,19 @@ async def run_period_collect(
         total=total_tasks,
         trigger=trigger,
     )
+
+    # 二次检查：创建后再次确认没有并发启动的同类任务（双重防护）
+    if database.mongo_db is not None and log_id:
+        from bson import ObjectId
+        count = await database.mongo_db["sync_task_logs"].count_documents({
+            "task_id": task_id,
+            "status": "RUNNING",
+        })
+        if count > 1:
+            # 有并发竞争，取消当前创建的任务（让先创建的继续）
+            logger.warning("Task %s concurrent start detected, cancelling duplicate log_id=%s", task_id, log_id)
+            await finish_sync_task_log(log_id, STATUS_CANCELLED, error_message="并发启动冲突，自动取消")
+            return {"skipped": True, "reason": "concurrent_conflict"}
 
     logger.info("Starting %s collect for period_key=%s log_id=%s", granularity, period_key, log_id)
 
@@ -719,8 +733,7 @@ async def run_crawl_queue_once(max_batch: int = 1) -> None:
     if not job:
         return
     job_id = job["_id"]
-    if job["status"] == "PENDING":
-        await set_job_running(job_id)
+    # get_next_job 已原子认领 PENDING->RUNNING，无需再调用 set_job_running
     config = job.get("config") or {}
     cat_id = config.get("catId", "") or ""
     extra = config.get("extra") or {}

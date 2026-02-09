@@ -7,5 +7,7 @@ export async function fetchCategories(): Promise<CategoryList> {
   if (!resp.ok) {
     throw new Error(`Failed to load categories: ${resp.status}`);
   }
-  return resp.json();
+  const json = await resp.json();
+  // 兼容包装格式 { ok, data } 和裸数组格式
+  return json.data ?? json;
 }

@@ -122,9 +122,12 @@ export const HotIndustryTable = React.memo(function HotIndustryTable({
               <tr>
                 <td
                   colSpan={7}
-                  className="px-6 py-8 text-center text-sm text-white/40"
+                  className="px-6 py-12 text-center"
                 >
-                  暂无数据
+                  <p className="text-sm text-white/40">暂无数据</p>
+                  <p className="mt-1 text-xs text-white/25">
+                    请点击顶部"采集"按钮获取数据，或尝试切换类目和时间周期
+                  </p>
                 </td>
               </tr>
             )}

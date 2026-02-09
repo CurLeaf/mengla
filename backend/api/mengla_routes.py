@@ -151,7 +151,7 @@ async def _mengla_query_by_action(action: str, body: MengLaQueryParamsBody) -> J
             exc_info=True,
         )
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="数据查询失败，请稍后重试或联系管理员")
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ async def mengla_query(body: MengLaQueryBody):
             exc_info=True,
         )
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="数据查询失败，请稍后重试或联系管理员")
 
 
 @router.post("/high", dependencies=[Depends(require_auth)])

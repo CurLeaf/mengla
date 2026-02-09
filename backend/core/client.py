@@ -57,7 +57,7 @@ class RequestPressure:
     """跟踪外部采集系统的请求压力，所有指标线程安全。"""
 
     def __init__(self) -> None:
-        self.max_inflight: int = _safe_int_env("MAX_INFLIGHT_REQUESTS", 3)
+        self.max_inflight: int = _safe_int_env("MAX_INFLIGHT_REQUESTS", 1)
         self._inflight: int = 0
         self._waiting: int = 0  # 等待获取信号量的任务数
         self._total_sent: int = 0
@@ -124,9 +124,10 @@ class MengLaService:
     """
     萌啦数据采集服务
 
-    限流策略（三层保护）：
+    外部采集系统是串行的（一次只能处理一个请求），限流策略（三层保护）：
     1. MIN_REQUEST_INTERVAL = 5s  — 两次 HTTP 请求之间至少间隔 5 秒
-    2. MAX_INFLIGHT（全局信号量）— 同时等待 webhook 结果的请求数上限（默认 3）
+    2. MAX_INFLIGHT（全局信号量）— 同时等待 webhook 结果的请求数上限（默认 1，串行）
+       上一个请求拿到 webhook 结果后，才会发送下一个请求
     3. 渐进退避轮询              — webhook 等待期间逐步放缓轮询频率
     """
 

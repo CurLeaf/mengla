@@ -128,7 +128,11 @@ export async function cancelAllTasks(): Promise<{
   cancelled_crawl_jobs: number;
   cancelled_crawl_subtasks: number;
 }> {
-  const resp = await authFetch(`${API_BASE}/api/admin/tasks/cancel-all`, { method: "POST" });
+  const resp = await authFetch(`${API_BASE}/api/admin/tasks/cancel-all`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirm: true }),
+  });
   if (!resp.ok) throw new Error(`Failed to cancel tasks: ${resp.status}`);
   return resp.json();
 }

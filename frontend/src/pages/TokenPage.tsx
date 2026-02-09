@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { toast } from "sonner";
 import { generateApiToken } from "../services/auth";
 
 interface GeneratedToken {
@@ -19,10 +20,18 @@ export default function TokenPage() {
 
   const handleGenerate = async (e: FormEvent) => {
     e.preventDefault();
+    if (!label.trim() || label.trim().length < 2) {
+      setError("标签至少需要 2 个字符");
+      return;
+    }
+    if (label.trim().length > 50) {
+      setError("标签不能超过 50 个字符");
+      return;
+    }
     setError("");
     setLoading(true);
     try {
-      const result = await generateApiToken(label, expiresHours);
+      const result = await generateApiToken(label.trim(), expiresHours);
       setTokens((prev) => [
         {
           token: result.token,
@@ -32,6 +41,7 @@ export default function TokenPage() {
         },
         ...prev,
       ]);
+      toast.success("Token 已生成", { description: "请立即复制保存，离开页面后将无法再次查看" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "生成失败");
     } finally {
@@ -43,10 +53,9 @@ export default function TokenPage() {
     if (confirmDelete === tokenValue) {
       setTokens((prev) => prev.filter((t) => t.token !== tokenValue));
       setConfirmDelete(null);
+      toast.success("Token 已删除");
     } else {
       setConfirmDelete(tokenValue);
-      // 3 秒后自动取消确认状态
-      setTimeout(() => setConfirmDelete((cur) => (cur === tokenValue ? null : cur)), 3000);
     }
   };
 
@@ -92,11 +101,19 @@ export default function TokenPage() {
             <input
               type="text"
               value={label}
-              onChange={(e) => setLabel(e.target.value)}
+              onChange={(e) => { setLabel(e.target.value); if (error) setError(""); }}
               required
-              className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:border-[#5E6AD2]"
+              maxLength={50}
+              className={`w-full bg-[#0F0F12] border rounded-lg px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 transition-colors ${
+                label.trim().length > 0 && label.trim().length < 2
+                  ? "border-amber-500/40 focus:border-amber-500"
+                  : "border-white/10 focus:border-[#5E6AD2]"
+              }`}
               placeholder="如：外部系统对接"
             />
+            {label.trim().length > 0 && label.trim().length < 2 && (
+              <p className="mt-1 text-[10px] text-amber-400">标签至少需要 2 个字符</p>
+            )}
           </div>
           <div className="w-40">
             <label className="block text-[11px] text-white/50 mb-1.5 font-medium">
@@ -122,8 +139,12 @@ export default function TokenPage() {
           <button
             type="submit"
             disabled={loading}
-            className="px-5 py-2 bg-[#5E6AD2] hover:bg-[#6E7AE2] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-busy={loading}
+            className="px-5 py-2 bg-[#5E6AD2] hover:bg-[#6E7AE2] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
+            {loading && (
+              <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            )}
             {loading ? "生成中…" : "生成 Token"}
           </button>
         </form>
@@ -137,9 +158,17 @@ export default function TokenPage() {
       {/* 已生成的 Token 列表 */}
       {tokens.length > 0 && (
         <div className="bg-[#0a0a0c]/80 border border-white/10 rounded-2xl p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_14px_30px_rgba(0,0,0,0.6)]">
-          <h3 className="text-sm font-semibold text-white mb-4">
-            已生成的 Token（仅显示一次，请妥善保存）
-          </h3>
+          <div className="flex items-start gap-2 mb-4">
+            <span className="shrink-0 mt-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-500/20 text-amber-400">注意</span>
+            <div>
+              <h3 className="text-sm font-semibold text-white">
+                已生成的 Token
+              </h3>
+              <p className="text-[11px] text-amber-400/80 mt-0.5">
+                Token 仅在此页面显示一次，刷新或离开页面后将无法再次查看，请立即复制保存。
+              </p>
+            </div>
+          </div>
           <div className="space-y-3">
             {tokens.map((item) => (
               <div
@@ -159,17 +188,32 @@ export default function TokenPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-white/30">{item.createdAt}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(item.token)}
-                      className={`px-2 py-1 text-[11px] rounded transition-colors ${
-                        confirmDelete === item.token
-                          ? "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
-                          : "bg-white/5 hover:bg-red-500/10 border border-white/10 text-white/40 hover:text-red-400 hover:border-red-500/20"
-                      }`}
-                    >
-                      {confirmDelete === item.token ? "确认删除" : "删除"}
-                    </button>
+                    {confirmDelete === item.token ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item.token)}
+                          className="px-2 py-1 text-[11px] rounded bg-red-600 hover:bg-red-700 text-white transition-colors"
+                        >
+                          确认
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(null)}
+                          className="px-2 py-1 text-[11px] rounded border border-white/20 text-white/50 hover:bg-white/5 transition-colors"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(item.token)}
+                        className="px-2 py-1 text-[11px] rounded bg-white/5 hover:bg-red-500/10 border border-white/10 text-white/40 hover:text-red-400 hover:border-red-500/20 transition-colors"
+                      >
+                        删除
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

@@ -11,13 +11,35 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    // 前端验证
+    if (username.trim().length < 2) {
+      setError("用户名至少需要 2 个字符");
+      return;
+    }
+    if (password.length < 4) {
+      setError("密码至少需要 4 个字符");
+      return;
+    }
     setError("");
     setLoading(true);
     try {
-      await login(username, password);
+      await login(username.trim(), password);
       navigate("/", { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败");
+      if (err instanceof Error) {
+        const msg = err.message;
+        if (msg.includes("429") || msg.includes("频繁")) {
+          setError("登录尝试过于频繁，请 1 分钟后再试");
+        } else if (msg.includes("401") || msg.includes("密码") || msg.includes("用户名")) {
+          setError("用户名或密码错误，请检查后重试");
+        } else if (msg.includes("fetch") || msg.includes("network") || msg.includes("Network")) {
+          setError("网络连接失败，请检查网络后重试");
+        } else {
+          setError(msg);
+        }
+      } else {
+        setError("登录失败，请稍后重试");
+      }
     } finally {
       setLoading(false);
     }
@@ -53,7 +75,7 @@ export default function LoginPage() {
               <input
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => { setUsername(e.target.value); if (error) setError(""); }}
                 required
                 autoFocus
                 autoComplete="username"
@@ -69,7 +91,7 @@ export default function LoginPage() {
               <input
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); if (error) setError(""); }}
                 required
                 autoComplete="current-password"
                 className="w-full bg-[#0F0F12] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:border-[#5E6AD2] transition-colors"
@@ -86,8 +108,12 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 bg-[#5E6AD2] hover:bg-[#6E7AE2] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:ring-offset-2 focus:ring-offset-[#050506]"
+              aria-busy={loading}
+              className="w-full py-2.5 bg-[#5E6AD2] hover:bg-[#6E7AE2] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 focus:ring-offset-2 focus:ring-offset-[#050506] flex items-center justify-center gap-2"
             >
+              {loading && (
+                <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              )}
               {loading ? "登录中…" : "登 录"}
             </button>
           </form>

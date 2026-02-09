@@ -76,7 +76,15 @@ const RankPage: React.FC<RankPageProps> = ({ mode, listKey, title }) => {
 
   return (
     <div className="space-y-6">
-      {periodSelector}
+      <div className="flex items-center gap-3">
+        {periodSelector}
+        {query.isFetching && !query.isLoading && (
+          <div className="flex items-center gap-1.5 text-xs text-white/40">
+            <span className="inline-block w-3 h-3 border border-white/20 border-t-[#5E6AD2] rounded-full animate-spin" />
+            <span>更新中…</span>
+          </div>
+        )}
+      </div>
       <HotIndustryTable
         data={list}
         title={title}

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { fetchPanelConfig, updatePanelConfig } from "../../services/panel-config-api";
 import type { PanelLayoutConfig } from "../../types/panel-config";
 
@@ -36,6 +37,10 @@ export function LayoutConfigManager() {
       updatePanelConfig({ layout }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["panel-config"] });
+      toast.success("布局配置已保存");
+    },
+    onError: (e) => {
+      toast.error("保存失败", { description: e instanceof Error ? e.message : String(e) });
     },
   });
 
@@ -107,14 +112,15 @@ export function LayoutConfigManager() {
           type="button"
           onClick={handleSave}
           disabled={saveMutation.isPending}
-          className="px-4 py-2 rounded-lg border border-white/10 text-xs text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 disabled:opacity-50"
+          aria-busy={saveMutation.isPending}
+          className="px-4 py-2 rounded-lg border border-white/10 text-xs text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#5E6AD2]/50 disabled:opacity-50 flex items-center gap-2"
         >
+          {saveMutation.isPending && (
+            <span className="inline-block w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
+          )}
           {saveMutation.isPending ? "保存中…" : "保存布局配置"}
         </button>
       </div>
-      {saveMutation.isError && (
-        <p className="text-xs text-red-400">{String(saveMutation.error)}</p>
-      )}
     </section>
   );
 }
