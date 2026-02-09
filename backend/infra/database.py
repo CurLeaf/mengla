@@ -114,12 +114,19 @@ def _mask_uri(uri: str) -> str:
 
 async def connect_to_mongo(uri: str, db_name: str) -> None:
     global mongo_client, mongo_db
-    # 单节点 MongoDB（非副本集）不支持 retryable writes，必须显式关闭
-    mongo_client = motor.motor_asyncio.AsyncIOMotorClient(uri, retryWrites=False)
+    # 单节点 MongoDB（非副本集）不支持 retryable writes 和隐式 session，
+    # 必须在 URI 和参数中同时关闭，确保 PyMongo 4.x 不发送 txnNumber
+    sep = "&" if "?" in uri else "?"
+    safe_uri = uri if "retryWrites" in uri else f"{uri}{sep}retryWrites=false"
+    mongo_client = motor.motor_asyncio.AsyncIOMotorClient(
+        safe_uri,
+        retryWrites=False,
+        directConnection=True,
+    )
     mongo_db = mongo_client[db_name]
     import logging
     logging.getLogger("mengla-backend").info(
-        "[DB] Mongo connected uri=%s db=%s", _mask_uri(uri), db_name
+        "[DB] Mongo connected uri=%s db=%s", _mask_uri(safe_uri), db_name
     )
 
 
