@@ -300,13 +300,27 @@ class MengLaService:
                 elapsed = time.time() - start_time
 
                 if data is not None:
-                    logger.info("[MengLa] webhook_ok id=%s polls=%s sec=%.1f", execution_id, poll_count, elapsed)
-                    # 消费后删除 exec key，避免堆积
-                    try:
-                        await database.redis_client.delete(exec_key)
-                    except Exception:
-                        pass
-                    return json.loads(data)
+                    parsed = json.loads(data)
+                    # 防御：如果 Redis 中残留了 running 状态的心跳数据，跳过继续等待
+                    if isinstance(parsed, dict) and parsed.get("status") in ("running", "sync", "pending", "queued"):
+                        if poll_count == 1 or int(elapsed) >= last_log_sec + 30:
+                            logger.info(
+                                "[MengLa] polling skip stale status=%s id=%s",
+                                parsed.get("status"), execution_id,
+                            )
+                        # 删除脏数据，继续等待真正的结果
+                        try:
+                            await database.redis_client.delete(exec_key)
+                        except Exception:
+                            pass
+                    else:
+                        logger.info("[MengLa] webhook_ok id=%s polls=%s sec=%.1f", execution_id, poll_count, elapsed)
+                        # 消费后删除 exec key，避免堆积
+                        try:
+                            await database.redis_client.delete(exec_key)
+                        except Exception:
+                            pass
+                        return parsed
 
                 if int(elapsed) >= last_log_sec + 30:
                     logger.info(

@@ -73,16 +73,11 @@ export default function App() {
   } = useCategoryState();
 
   /* ---- 采集触发控制 ---- */
-  const [fetchTrigger, setFetchTrigger] = useState(0);
+  const [fetchTrigger] = useState(1);  // 页面始终自动加载缓存数据
   const [triggerLoading, setTriggerLoading] = useState(false);
   const [collectMode, setCollectMode] = useState<"current" | "fill" | "force">("current");
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const queryClient = useQueryClient();
-
-  // 切换页面时重置触发器，页面不会自动发起请求
-  useEffect(() => {
-    setFetchTrigger(0);
-  }, [location.pathname]);
 
   // 当前路径对应的 modeKey（仅在仪表盘页面匹配）
   const currentModeKey = useMemo(() => {
@@ -102,8 +97,7 @@ export default function App() {
         queryClient.invalidateQueries({ queryKey: ["mengla"] });
         toast.success("补齐采集任务已启动", { description: "将只采集缺失的数据，已有缓存的会跳过" });
       } else {
-        // "当前"模式：激活页面查询（fetchTrigger > 0 时 useQuery 才 enabled）
-        setFetchTrigger((prev) => prev + 1);
+        // "当前"模式：强制刷新当前页面数据
         queryClient.invalidateQueries({ queryKey: ["mengla"] });
       }
     } catch (e) {
@@ -334,7 +328,6 @@ export default function App() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setFetchTrigger((prev) => prev + 1);
                       queryClient.invalidateQueries({ queryKey: ["mengla"] });
                       toast.success("已刷新", { description: "数据正在重新加载" });
                     }}

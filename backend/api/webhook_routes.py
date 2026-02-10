@@ -50,12 +50,21 @@ async def mengla_webhook(request: Request):
     if not execution_id:
         raise HTTPException(status_code=400, detail="missing executionId in payload")
 
-    value = payload.get("resultData") or payload
+    # 只有任务真正完成（或失败）时才写入 Redis，忽略 running/sync 心跳
+    status = (payload.get("status") or "").lower()
+    if status in ("running", "sync", "pending", "queued"):
+        logger.info(
+            "[MengLa] webhook skip (status=%s) executionId=%s",
+            status,
+            execution_id,
+        )
+        return {"status": "ok", "skipped": True, "reason": f"status={status}"}
+
+    value = payload.get("resultData") or payload.get("data") or payload
     await client.set(
         f"mengla:exec:{execution_id}",
         json.dumps(value, ensure_ascii=False),
         ex=60 * 30,
     )
-    res = {"status": "ok"}
-    logger.info("[MengLa] redis_set key=mengla:exec:%s", execution_id)
-    return res
+    logger.info("[MengLa] redis_set key=mengla:exec:%s status=%s", execution_id, status)
+    return {"status": "ok"}

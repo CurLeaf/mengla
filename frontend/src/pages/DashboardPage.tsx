@@ -23,7 +23,7 @@ import { useOutletContext } from "react-router-dom";
 import type { LayoutContext } from "../App";
 
 export default function DashboardPage() {
-  const { primaryCatId, fetchTrigger } = useOutletContext<LayoutContext>();
+  const { primaryCatId } = useOutletContext<LayoutContext>();
   const queryClient = useQueryClient();
 
   /* ---- 趋势：独立状态 ---- */
@@ -46,7 +46,7 @@ export default function DashboardPage() {
       queryMengla(
         buildTrendQueryParams("industryTrendRange", primaryCatId, trendPeriod, trendRangeStart, trendRangeEnd)
       ),
-    enabled: fetchTrigger > 0 && !!primaryCatId && !!trendRangeStart && !!trendRangeEnd,
+    enabled: !!primaryCatId && !!trendRangeStart && !!trendRangeEnd,
     staleTime: 5 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     networkMode: "always",
@@ -70,7 +70,7 @@ export default function DashboardPage() {
       queryMengla(
         buildQueryParams("industryViewV2", primaryCatId, distributionPeriod, distributionTimest)
       ),
-    enabled: fetchTrigger > 0 && !!primaryCatId && !!distributionTimest,
+    enabled: !!primaryCatId && !!distributionTimest,
     staleTime: 5 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     networkMode: "always",
@@ -82,15 +82,6 @@ export default function DashboardPage() {
   const industryView = useIndustryView(pickPayload(viewQuery.data));
 
   /* ---- 渲染：两个 section 各自独立，互不阻塞 ---- */
-  if (fetchTrigger === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 text-muted-foreground space-y-3">
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-muted-foreground/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
-        <p className="text-sm">请点击左上角 <span className="text-primary font-medium">「采集」</span> 按钮加载数据</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* 趋势 section */}

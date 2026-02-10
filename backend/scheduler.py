@@ -356,9 +356,14 @@ async def run_backfill_check(
         return {"status": "skipped", "reason": "db_not_connected"}
 
     now = datetime.now()
-    periods = make_period_keys(now)
     top_cat_ids = _get_top_cat_ids_safe()
     interval = get_collect_interval()
+
+    # 补数检查应检查上一个完整周期，而非当天（当天数据尚未产生）
+    check_targets = {
+        "day": make_period_keys(now - timedelta(days=1)),
+        "month": make_period_keys(now.replace(day=1) - timedelta(days=1)),
+    }
 
     # 检查总数: 2 granularities * cats * 4 actions
     total_checks = 2 * len(top_cat_ids) * len(NON_TREND_ACTIONS)
@@ -384,7 +389,7 @@ async def run_backfill_check(
 
     try:
         for granularity in ["day", "month"]:
-            period_key = periods[granularity]
+            period_key = check_targets[granularity][granularity]
 
             for cat_id in top_cat_ids:
                 if is_cancelled(log_id):
@@ -465,8 +470,14 @@ async def run_mengla_jobs(
     - 先计算当日对应的 day/month/quarter/year period_key
     - 对于每个 action+granularity，复用 query_mengla 的查 Mongo + 调第三方逻辑
     """
-    now = target_date or datetime.now()
-    periods = make_period_keys(now)
+    # 按颗粒度分别计算目标日期，避免采集尚未结束的周期（如当前季度/当前年）
+    if target_date:
+        periods = make_period_keys(target_date)
+    else:
+        periods = {
+            gran: make_period_keys(_compute_target_date(gran))[gran]
+            for gran in ("day", "month", "quarter", "year")
+        }
     top_cat_ids = _get_top_cat_ids_safe()
 
     # 总任务数: cats * 5 actions * 4 granularities
@@ -537,8 +548,17 @@ async def run_mengla_granular_jobs(
     针对 MengLa 的 high / hot / chance / view / trend 五个接口，
     按日 / 月 / 季 / 年四种颗粒度进行补齐。
     """
-    now = target_date or (datetime.now() - timedelta(days=1))
-    periods = make_period_keys(now)
+    # 按颗粒度分别计算目标日期，避免采集尚未结束的周期
+    if target_date:
+        now = target_date
+        periods = make_period_keys(target_date)
+    else:
+        periods = {
+            gran: make_period_keys(_compute_target_date(gran))[gran]
+            for gran in ("day", "month", "quarter", "year")
+        }
+        # 趋势接口用 day 颗粒度的目标日期确定年份
+        now = _compute_target_date("day")
     top_cat_ids = _get_top_cat_ids_safe()
     interval = get_collect_interval()
 

@@ -24,7 +24,7 @@ interface RankPageProps {
 }
 
 const RankPage: React.FC<RankPageProps> = ({ mode, listKey, title }) => {
-  const { primaryCatId, fetchTrigger } = useOutletContext<LayoutContext>();
+  const { primaryCatId } = useOutletContext<LayoutContext>();
   const queryClient = useQueryClient();
 
   const [period, setPeriod] = useState<PeriodType>("month");
@@ -36,7 +36,7 @@ const RankPage: React.FC<RankPageProps> = ({ mode, listKey, title }) => {
   const query = useQuery({
     queryKey,
     queryFn: () => queryMengla(buildQueryParams(mode, primaryCatId, period, timest)),
-    enabled: fetchTrigger > 0 && !!primaryCatId && !!timest,
+    enabled: !!primaryCatId && !!timest,
     staleTime: STALE_TIMES.categories,
     gcTime: GC_TIMES.default,
     networkMode: "always",
@@ -58,22 +58,6 @@ const RankPage: React.FC<RankPageProps> = ({ mode, listKey, title }) => {
       />
     </div>
   );
-
-  if (fetchTrigger === 0) {
-    return (
-      <div className="space-y-6">
-        {periodSelector}
-        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground space-y-3">
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-muted-foreground/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-          </svg>
-          <p className="text-sm">
-            请点击左上角 <span className="text-primary font-medium">「采集」</span> 按钮加载数据
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">

@@ -908,11 +908,13 @@ async def query_mengla(
     trace_id = collect_logger.start(action, _cat_id, _granularity, _period_key)
     
     try:
-        # 1. 检查三级缓存（非趋势接口）
+        # 1. 检查三级缓存
         is_trend = action == "industryTrendRange"
-        if use_cache and not is_trend:
+        # 趋势数据的缓存 key 使用 starRange:endRange 组合，非趋势使用 period_key
+        _cache_key = f"{_star_range}:{_end_range}" if is_trend else _period_key
+        if use_cache and _cache_key:
             cached_data, cache_source = await cache_manager.get(
-                action, _cat_id, _granularity, _period_key
+                action, _cat_id, _granularity, _cache_key
             )
             if cached_data is not None:
                 duration_ms = int((time.time() - start_time) * 1000)
@@ -941,11 +943,11 @@ async def query_mengla(
         
         data, source = await circuit.call(fetch_from_service)
         
-        # 3. 写入三级缓存（非趋势接口）
+        # 3. 写入三级缓存
         duration_ms = int((time.time() - start_time) * 1000)
-        if not is_trend:
+        if _cache_key:
             await cache_manager.set(
-                action, _cat_id, _granularity, _period_key,
+                action, _cat_id, _granularity, _cache_key,
                 data, source="fresh", collect_duration_ms=duration_ms
             )
         

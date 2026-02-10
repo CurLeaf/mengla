@@ -590,17 +590,17 @@ def _parse_date_range(args):
     if args.start and args.end:
         return args.start, args.end
     elif args.days:
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=args.days)
+        end_date = datetime.now() - timedelta(days=1)
+        start_date = end_date - timedelta(days=args.days - 1)
     elif args.months:
-        end_date = datetime.now()
+        end_date = datetime.now() - timedelta(days=1)
         start_date = end_date - timedelta(days=args.months * 30)
     elif args.years:
-        end_date = datetime.now()
+        end_date = datetime.now() - timedelta(days=1)
         start_date = end_date - timedelta(days=args.years * 365)
     else:
         # 默认近两年
-        end_date = datetime.now()
+        end_date = datetime.now() - timedelta(days=1)
         start_date = end_date - timedelta(days=730)
     
     return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
