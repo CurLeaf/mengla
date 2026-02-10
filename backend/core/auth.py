@@ -133,8 +133,8 @@ async def check_login_rate(ip: str) -> bool:
     from ..infra.database import redis_client
 
     if redis_client is None:
-        logger.warning("登录限流 Redis 不可用，安全起见拒绝登录请求 ip=%s", ip)
-        return False
+        logger.warning("登录限流 Redis 不可用，降级放行 ip=%s", ip)
+        return True
     try:
         key = f"rate_limit:login:{ip}"
         count = await redis_client.incr(key)
@@ -142,5 +142,5 @@ async def check_login_rate(ip: str) -> bool:
             await redis_client.expire(key, 60)
         return count <= 10
     except Exception:
-        logger.warning("登录限流 Redis 异常，安全起见拒绝登录请求 ip=%s", ip, exc_info=True)
-        return False
+        logger.warning("登录限流 Redis 异常，降级放行 ip=%s", ip, exc_info=True)
+        return True

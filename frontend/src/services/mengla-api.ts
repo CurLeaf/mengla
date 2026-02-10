@@ -2,8 +2,8 @@ import type { MenglaQueryParams, MenglaQueryResponse } from "../types/mengla";
 import { API_BASE } from "../constants";
 import { authFetch } from "./auth";
 
-/** 萌拉接口依赖采集服务 webhook，首包可能较慢，超时设为 3 分钟 */
-const MENGLA_FETCH_TIMEOUT_MS = 3 * 60 * 1000;
+/** 前端已有缓存自动加载，超时缩短为 30 秒 */
+const MENGLA_FETCH_TIMEOUT_MS = 30 * 1000;
 
 export async function queryMengla(
   params: MenglaQueryParams

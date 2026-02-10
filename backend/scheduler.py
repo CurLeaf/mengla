@@ -222,9 +222,12 @@ async def run_period_collect(
             logger.info("%s collect cancelled: %s", granularity.capitalize(), stats)
             return stats
 
-        # 2) 趋势接口：按年范围补齐
+        # 2) 趋势接口：按年范围补齐（end_range 不超过当前日期，避免请求未来数据）
         year_str = str(target.year)
         start_year, end_year = period_to_date_range("year", year_str)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        if end_year > today_str:
+            end_year = today_str
         date_type_map = {"day": "DAY", "month": "MONTH", "quarter": "QUARTERLY_FOR_YEAR", "year": "YEAR"}
         trend_date_type = date_type_map.get(granularity, "DAY")
 
@@ -672,6 +675,9 @@ async def run_mengla_granular_jobs(
         if not cancelled:
             year_str = str(now.year)
             start_year, end_year = period_to_date_range("year", year_str)
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            if end_year > today_str:
+                end_year = today_str
 
             for cat_id in top_cat_ids:
                 if is_cancelled(log_id):

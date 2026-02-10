@@ -328,7 +328,9 @@ class CircuitBreaker:
             await self.record_success()
             return result
         except Exception as e:
-            await self.record_failure(e)
+            # 只对网络/超时类异常计入熔断失败，业务异常（如 ValueError）不计入
+            if is_retryable_exception(e):
+                await self.record_failure(e)
             raise
     
     def get_stats(self) -> Dict[str, Any]:

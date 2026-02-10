@@ -4,8 +4,6 @@ import json
 from pathlib import Path
 from typing import List, Optional, Set
 
-from fastapi import HTTPException
-
 _CATEGORIES_CACHE: Optional[List[dict]] = None
 # category.json 在 backend/ 目录下
 _CATEGORIES_PATH = Path(__file__).resolve().parent.parent / "category.json"
@@ -16,12 +14,12 @@ def _ensure_categories_loaded() -> List[dict]:
     global _CATEGORIES_CACHE
     if _CATEGORIES_CACHE is None:
         if not _CATEGORIES_PATH.exists():
-            raise HTTPException(status_code=500, detail="categories file not found")
+            raise RuntimeError("categories file not found")
         try:
             raw = _CATEGORIES_PATH.read_text(encoding="utf-8")
             _CATEGORIES_CACHE = json.loads(raw)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=500, detail=f"failed to load categories: {exc}") from exc
+            raise RuntimeError(f"failed to load categories: {exc}") from exc
     return _CATEGORIES_CACHE
 
 

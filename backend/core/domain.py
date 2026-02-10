@@ -42,6 +42,9 @@ from ..infra.resilience import (
 from ..infra.logger import get_collect_logger, CollectLogger
 
 
+# 事务支持检测缓存：None=未检测, True=支持, False=不支持
+_mongo_supports_transactions: Optional[bool] = None
+
 # 有效的 action 列表
 VALID_ACTIONS = {"high", "hot", "chance", "industryViewV2", "industryTrendRange"}
 
@@ -138,18 +141,16 @@ async def _dedupe_by_query(
     删除其余重复文档。
 
     安全保障：
-    - 删除前使用聚合验证确实存在重复（count > 1）
-    - 始终保留排序后的第一条记录
-    - 仅按 _id 精确删除冗余文档
+    - 使用 _id 精确匹配删除，避免误删新插入的文档
+    - MongoDB 唯一索引 idx_main_query 保证 replace_one(upsert=True) 的唯一性
+    - 此函数仅清理历史遗留重复数据，非高频路径
+    
+    注意：find → delete_many 非原子操作，但由于唯一索引保护，
+    两步之间新插入的文档不会产生重复，影响有限。
     """
-    cursor = collection.find(mongo_query)
+    cursor = collection.find(mongo_query, projection={"_id": 1, "data": 1, "created_at": 1})
     docs = await cursor.to_list(length=100)
     if len(docs) <= 1:
-        return
-
-    # 二次验证：确认确实有重复
-    count = await collection.count_documents(mongo_query)
-    if count <= 1:
         return
 
     # 排序：有数据的排前面，同为空则按 created_at 降序（新的在前）
@@ -314,10 +315,12 @@ async def _fetch_mengla_data(
     extra: Optional[Dict[str, Any]] = None,
     timeout_seconds: Optional[int] = None,
     skip_cache: bool = False,
-) -> tuple[Any, str]:
+) -> tuple:
     """
     内部采集函数：直接查询 MongoDB/Redis 或调用外部采集服务
-    返回 (data, source)，source 为 "mongo" | "redis" | "fresh"
+    返回 (data, source) 或 (data, source, extra_meta)
+    source 为 "l2" | "l3" | "fresh"
+    extra_meta 仅在趋势部分命中时返回 {"partial": True, ...}
     
     Args:
         skip_cache: 如果为 True，跳过 MongoDB/Redis 缓存检查，直接调用外部采集服务
@@ -622,14 +625,18 @@ async def _fetch_mengla_data(
                     )
                 else:
                     # 多文档写入：尝试使用事务保证一致性（需 Replica Set）
+                    global _mongo_supports_transactions
                     _session = None
-                    try:
-                        if database.mongo_client is not None:
-                            _session = await database.mongo_client.start_session()
-                            _session.start_transaction()
-                    except Exception:
-                        # 单节点 MongoDB 不支持事务，降级为逐条写入
-                        _session = None
+                    if _mongo_supports_transactions is not False:
+                        try:
+                            if database.mongo_client is not None:
+                                _session = await database.mongo_client.start_session()
+                                _session.start_transaction()
+                                _mongo_supports_transactions = True
+                        except Exception:
+                            # 单节点 MongoDB 不支持事务，缓存结果避免后续重复尝试
+                            _mongo_supports_transactions = False
+                            _session = None
 
                     try:
                         for point in points:
@@ -779,7 +786,8 @@ async def collect_batch(
     async def execute_one(task: Dict[str, Any]) -> Tuple[Dict[str, Any], Any, str, Optional[Exception]]:
         async with semaphore:
             try:
-                data, source = await _fetch_mengla_data(**task)
+                result = await _fetch_mengla_data(**task)
+                data, source = result[0], result[1]
                 return (task, data, source, None)
             except Exception as e:
                 logger.warning("Batch collect task failed: %s error=%s", task, e)
@@ -872,7 +880,7 @@ async def query_mengla(
     extra: Optional[Dict[str, Any]] = None,
     use_cache: bool = True,
     timeout_seconds: Optional[int] = None,
-) -> Tuple[Any, str]:
+) -> tuple:
     """
     统一的 MengLa 查询接口
     
@@ -927,7 +935,7 @@ async def query_mengla(
         async def fetch_from_service():
             # 调用内部采集函数
             # 如果 use_cache=False，则跳过 MongoDB/Redis 缓存检查
-            data, source = await _fetch_mengla_data(
+            result = await _fetch_mengla_data(
                 action=action,
                 product_id=_product_id,
                 catId=_cat_id,
@@ -939,9 +947,11 @@ async def query_mengla(
                 timeout_seconds=timeout_seconds,
                 skip_cache=not use_cache,
             )
-            return data, source
+            return result
         
-        data, source = await circuit.call(fetch_from_service)
+        result = await circuit.call(fetch_from_service)
+        data, source = result[0], result[1]
+        extra_meta = result[2] if len(result) > 2 else None
         
         # 3. 写入三级缓存
         duration_ms = int((time.time() - start_time) * 1000)
@@ -952,6 +962,8 @@ async def query_mengla(
             )
         
         collect_logger.success(source, duration_ms)
+        if extra_meta:
+            return (data, source, extra_meta)
         return (data, source)
         
     except CircuitBreakerError as e:

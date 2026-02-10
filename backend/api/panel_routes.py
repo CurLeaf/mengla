@@ -10,6 +10,7 @@ from ..core.domain import VALID_ACTIONS, query_mengla
 from ..utils.period import period_keys_in_range
 from ..utils.dashboard import get_panel_config, update_panel_config
 from ..scheduler import PANEL_TASKS
+from ..core.auth import require_auth
 from .deps import require_admin
 
 router = APIRouter(tags=["Panel"])
@@ -110,14 +111,11 @@ async def fill_mengla_missing(
 # ---------------------------------------------------------------------------
 # 路由
 # ---------------------------------------------------------------------------
-@router.get("/config")
+@router.get("/config", dependencies=[Depends(require_auth)])
 async def panel_get_config():
     """
     Get current industry panel config (modules + layout).
-
-    Public endpoint — 无需认证。
-    设计意图：前端初始化时需要在用户登录前加载面板模块配置以渲染 UI，
-    该接口仅返回面板布局和模块列表，不含任何敏感数据。
+    需要认证，防止暴露系统内部模块结构。
     """
     return get_panel_config()
 

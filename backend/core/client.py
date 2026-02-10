@@ -65,6 +65,7 @@ class RequestPressure:
         self._total_timeout: int = 0
         self._total_error: int = 0
         self._lock = asyncio.Lock()
+        self._sem: Optional[asyncio.Semaphore] = None  # 惰性创建，需在事件循环内
 
     async def acquire(self) -> None:
         """请求进入排队，获取到 slot 后才能发送请求"""
@@ -91,8 +92,8 @@ class RequestPressure:
 
     @property
     def _semaphore(self) -> asyncio.Semaphore:
-        # 惰性创建（必须在事件循环中）
-        if not hasattr(self, "_sem"):
+        # 惰性创建（必须在事件循环中）；_sem 在 __init__ 中初始化为 None
+        if self._sem is None:
             self._sem = asyncio.Semaphore(self.max_inflight)
         return self._sem
 
