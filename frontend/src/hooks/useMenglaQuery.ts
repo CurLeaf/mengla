@@ -94,13 +94,49 @@ export function useTrendPoints(trendData: MenglaResponseData | undefined): Trend
 /** 从 industryViewV2 响应中提取 IndustryView */
 export function useIndustryView(viewData: MenglaResponseData | undefined): IndustryView | null {
   return useMemo((): IndustryView | null => {
-    const v = viewData?.industryViewV2List ?? viewData?.industryViewV2 ?? viewData ?? null;
-    if (!v || typeof v !== "object") return null;
-    const vRecord = v as Record<string, unknown>;
-    if ("data" in vRecord && vRecord.data) return v as IndustryView;
-    if ("industrySalesRangeDtoList" in vRecord || "industryGmvRangeDtoList" in vRecord)
-      return { data: v as IndustryView["data"] };
-    return v as IndustryView;
+    if (!viewData) return null;
+    
+    // 尝试多种可能的数据路径
+    const v2List = viewData?.industryViewV2List;
+    const v2 = viewData?.industryViewV2;
+    
+    // industryViewV2List.data 是最常见的结构
+    if (v2List && typeof v2List === "object") {
+      const v2ListRecord = v2List as Record<string, unknown>;
+      if ("data" in v2ListRecord && v2ListRecord.data) {
+        return { data: v2ListRecord.data as IndustryView["data"] };
+      }
+      // 直接就是数据对象
+      if ("industrySalesRangeDtoList" in v2ListRecord || "industryGmvRangeDtoList" in v2ListRecord) {
+        return { data: v2List as IndustryView["data"] };
+      }
+    }
+    
+    // industryViewV2 路径
+    if (v2 && typeof v2 === "object") {
+      const v2Record = v2 as Record<string, unknown>;
+      if ("data" in v2Record && v2Record.data) {
+        return { data: v2Record.data as IndustryView["data"] };
+      }
+      if ("industrySalesRangeDtoList" in v2Record || "industryGmvRangeDtoList" in v2Record) {
+        return { data: v2 as IndustryView["data"] };
+      }
+    }
+    
+    // 直接在 viewData 上
+    if ("industrySalesRangeDtoList" in viewData || "industryGmvRangeDtoList" in viewData) {
+      return { data: viewData as unknown as IndustryView["data"] };
+    }
+    
+    // 兜底：viewData.data
+    if ("data" in viewData && viewData.data && typeof viewData.data === "object") {
+      const dataRecord = viewData.data as Record<string, unknown>;
+      if ("industrySalesRangeDtoList" in dataRecord || "industryGmvRangeDtoList" in dataRecord) {
+        return { data: viewData.data as IndustryView["data"] };
+      }
+    }
+    
+    return null;
   }, [viewData]);
 }
 
